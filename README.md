@@ -1,4 +1,4 @@
-# 销售陪练 Phase 1.3 · 演示版
+# 销售陪练 Phase 1.4 · 演示版
 
 基于 Next.js、React、TypeScript、Tailwind、SQLite/Drizzle 的个人销售训练产品。当前仅实现 `AI_MODE=mock`，客户回复与报告评分由本地规则生成；页面均明确标为演示模式。无需 API Key。
 
@@ -10,7 +10,7 @@ Copy-Item .env.example .env.local
 npm run dev
 ```
 
-打开 http://localhost:3000。页面：`/` 工作台、`/create` 创建训练、`/scenarios` 管理个人场景、`/train/:id` 对话、`/report/:id` 报告、`/history` 历史。
+打开 http://localhost:3000。页面：`/` 工作台、`/progress` 我的成长、`/create` 创建训练、`/scenarios` 管理个人场景、`/train/:id` 对话、`/report/:id` 报告、`/history` 历史。
 
 ## 测试与构建
 
@@ -42,6 +42,12 @@ Vitest 每次使用独立的临时 SQLite 数据库。Playwright 会在 3101 端
 结束训练后，在报告的“针对性练习”区选择需求挖掘、价值表达、异议处理或推进下一步。报告有评分时会标出 Mock 演示最低分；样本不足时仍可手动选择。创建页载入来源场景，显示本次练习说明，允许调整参数后创建独立会话；原消息和报告不会复制或改写。训练页、专项报告和历史记录会标明训练重点。专项报告提供返回仍存在的来源训练、再次进行同类专项练习和历史入口。
 
 `POST /api/sessions` 沿用普通场景字段；专项训练额外同时提交 `sourceSessionId` 与 `focusDimension`。服务端核对来源归属，并在创建会话时保存关联。训练重点作为可选上下文传给 `AIProvider`，供以后接入真实模型；当前 Mock 回复和评分仍由本地规则生成，不能用两次 Mock 分数差异判断能力提升。
+
+## 我的成长
+
+`/progress` 和 `GET /api/progress?days=7|30|90` 只统计当前匿名 Cookie 所属的 SQLite 记录。累计训练是现存会话数；已完成是状态为 `completed` 的会话数；最近 7/30 天按会话创建日计算，包含今天；活跃训练天数是所有会话创建日期的去重数；累计发言轮数只计 `role=user` 的消息。普通训练没有 `training_focus` 记录，专项训练及四项方向分布以该表为准。最近时间线展示最近 10 条训练。
+
+每日趋势按 `Asia/Shanghai` 自然日统计，7/30/90 天范围都包含今天；没有训练的日期补 0。删除训练后，以上统计随数据库记录同步变化。本版不展示能力成长曲线，也不使用 Mock 报告评分推断能力提升。匿名 Cookie 丢失后无法恢复原训练。
 
 ## 会话与失败恢复
 

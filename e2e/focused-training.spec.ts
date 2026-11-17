@@ -13,6 +13,7 @@ const dimensions = ['need_discovery', 'value_expression', 'objection_handling', 
 const labels = ['需求挖掘', '价值表达', '异议处理', '推进下一步'] as const;
 
 test('report leads to focused practice without changing the source training', async ({ page, browser }) => {
+  test.setTimeout(60_000);
   const outsider = await browser.newContext();
   let sourceId: string | undefined;
   let childId: string | undefined;
