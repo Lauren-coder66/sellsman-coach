@@ -6,6 +6,10 @@ import { trainingSessions } from '@/lib/db/schema';
 
 const cookieName = 'sales_coach_owner';
 
+export async function getOwnerId() {
+  return (await cookies()).get(cookieName)?.value;
+}
+
 export async function getOrCreateOwnerId() {
   const jar = await cookies();
   let ownerId = jar.get(cookieName)?.value;
@@ -23,8 +27,7 @@ export async function getOrCreateOwnerId() {
 }
 
 export async function getOwnedSession(sessionId: string) {
-  const jar = await cookies();
-  const ownerId = jar.get(cookieName)?.value;
+  const ownerId = await getOwnerId();
   if (!ownerId) return undefined;
   return db.select().from(trainingSessions).where(and(eq(trainingSessions.id, sessionId), eq(trainingSessions.ownerId, ownerId))).get();
 }

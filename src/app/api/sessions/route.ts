@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     const requestedLimit = Number(request.nextUrl.searchParams.get('limit') || 20);
     if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 50) return failure('INVALID_LIMIT','每页数量需为1至50',422);
     const limit = requestedLimit;
-    if (status && !['active','finishing','completed','failed'].includes(status)) return failure('INVALID_STATUS','状态无效',422);
+    if (status && !['active','replying','finishing','completed','failed'].includes(status)) return failure('INVALID_STATUS','状态无效',422);
     const rawCursor = request.nextUrl.searchParams.get('cursor');
     let cursor: z.infer<typeof cursorSchema> | null = null;
     if (rawCursor) {
