@@ -6,8 +6,11 @@ import { getOrCreateOwnerId } from '@/lib/auth/session';
 import { success, failure, handleError, parseJson } from '@/lib/api';
 import { scenarioSchema } from '@/lib/validation';
 import { getAIProvider } from '@/lib/ai';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, or, lt } from 'drizzle-orm';
 import { cookies } from 'next/headers';
+import { z } from 'zod';
+
+const cursorSchema = z.object({ createdAt: z.number().int().nonnegative(), id: z.string().uuid() });
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,9 +36,21 @@ export async function GET(request: NextRequest) {
     const ownerId = (await cookies()).get('sales_coach_owner')?.value;
     if (!ownerId) return success({items:[],nextCursor:null});
     const status = request.nextUrl.searchParams.get('status');
-    const limit = Math.min(Math.max(Number(request.nextUrl.searchParams.get('limit') || 20),1),50);
+    const requestedLimit = Number(request.nextUrl.searchParams.get('limit') || 20);
+    if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 50) return failure('INVALID_LIMIT','每页数量需为1至50',422);
+    const limit = requestedLimit;
     if (status && !['active','finishing','completed','failed'].includes(status)) return failure('INVALID_STATUS','状态无效',422);
-    const rows = db.select().from(trainingSessions).where(status ? and(eq(trainingSessions.ownerId,ownerId),eq(trainingSessions.status,status)) : eq(trainingSessions.ownerId,ownerId)).orderBy(desc(trainingSessions.createdAt)).limit(limit).all();
-    return success({items:rows.map(row=>{const saved=db.select().from(trainingReports).where(eq(trainingReports.sessionId,row.id)).get();const scores=saved?JSON.parse(saved.reportJson).scores:null;const score=scores?Object.values(scores as Record<string,{score:number}>).reduce((sum,item)=>sum+item.score,0):null;return {id:row.id,scenario:JSON.parse(row.scenarioJson),status:row.status,createdAt:row.createdAt,updatedAt:row.updatedAt,score}}),nextCursor:null});
+    const rawCursor = request.nextUrl.searchParams.get('cursor');
+    let cursor: z.infer<typeof cursorSchema> | null = null;
+    if (rawCursor) {
+      try { cursor = cursorSchema.parse(JSON.parse(Buffer.from(rawCursor, 'base64url').toString('utf8'))); }
+      catch { return failure('INVALID_CURSOR','分页游标无效',422); }
+    }
+    const older = cursor ? or(lt(trainingSessions.createdAt,cursor.createdAt),and(eq(trainingSessions.createdAt,cursor.createdAt),lt(trainingSessions.id,cursor.id))) : undefined;
+    const rows = db.select().from(trainingSessions).where(and(eq(trainingSessions.ownerId,ownerId),status ? eq(trainingSessions.status,status) : undefined,older)).orderBy(desc(trainingSessions.createdAt),desc(trainingSessions.id)).limit(limit+1).all();
+    const page = rows.slice(0,limit);
+    const last = page.at(-1);
+    const nextCursor = rows.length > limit && last ? Buffer.from(JSON.stringify({createdAt:last.createdAt,id:last.id})).toString('base64url') : null;
+    return success({items:page.map(row=>{const saved=db.select().from(trainingReports).where(eq(trainingReports.sessionId,row.id)).get();const scores=saved?JSON.parse(saved.reportJson).scores:null;const score=scores?Object.values(scores as Record<string,{score:number}>).reduce((sum,item)=>sum+item.score,0):null;return {id:row.id,scenario:JSON.parse(row.scenarioJson),status:row.status,createdAt:row.createdAt,updatedAt:row.updatedAt,score}}),nextCursor});
   } catch(error) { return handleError(error); }
 }
