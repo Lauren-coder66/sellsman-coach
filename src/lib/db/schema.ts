@@ -25,3 +25,17 @@ export const trainingReports = sqliteTable('training_reports', {
   reportJson: text('report_json').notNull(),
   createdAt: integer('created_at').notNull(),
 });
+
+export const savedScenarios = sqliteTable('saved_scenarios', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  name: text('name').notNull(),
+  product: text('product').notNull(),
+  description: text('description').notNull(),
+  identity: text('identity').notNull(),
+  personality: text('personality').notNull(),
+  difficulty: text('difficulty').notNull(),
+  goal: text('goal').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+}, table => [index('saved_scenarios_owner_idx').on(table.ownerId)]);

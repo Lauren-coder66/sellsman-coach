@@ -8,6 +8,13 @@
       "when": 1794815545407,
       "tag": "0000_stale_colossus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794921994292,
+      "tag": "0001_charming_cobalt_man",
+      "breakpoints": true
     }
   ]
 }

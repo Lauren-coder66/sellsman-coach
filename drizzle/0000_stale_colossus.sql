@@ -1,4 +1,4 @@
-CREATE TABLE `messages` (
+CREATE TABLE IF NOT EXISTS `messages` (
 	`id` text PRIMARY KEY NOT NULL,
 	`session_id` text NOT NULL,
 	`role` text NOT NULL,
@@ -8,8 +8,8 @@ CREATE TABLE `messages` (
 	FOREIGN KEY (`session_id`) REFERENCES `training_sessions`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `messages_session_sequence_uq` ON `messages` (`session_id`,`sequence`);--> statement-breakpoint
-CREATE TABLE `training_reports` (
+CREATE UNIQUE INDEX IF NOT EXISTS `messages_session_sequence_uq` ON `messages` (`session_id`,`sequence`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `training_reports` (
 	`id` text PRIMARY KEY NOT NULL,
 	`session_id` text NOT NULL,
 	`report_json` text NOT NULL,
@@ -17,8 +17,8 @@ CREATE TABLE `training_reports` (
 	FOREIGN KEY (`session_id`) REFERENCES `training_sessions`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `training_reports_session_id_unique` ON `training_reports` (`session_id`);--> statement-breakpoint
-CREATE TABLE `training_sessions` (
+CREATE UNIQUE INDEX IF NOT EXISTS `training_reports_session_id_unique` ON `training_reports` (`session_id`);--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `training_sessions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`owner_id` text NOT NULL,
 	`scenario_config` text NOT NULL,
@@ -28,4 +28,4 @@ CREATE TABLE `training_sessions` (
 	`updated_at` integer NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `training_sessions_owner_idx` ON `training_sessions` (`owner_id`);
+CREATE INDEX IF NOT EXISTS `training_sessions_owner_idx` ON `training_sessions` (`owner_id`);
