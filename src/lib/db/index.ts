@@ -20,6 +20,8 @@ function connect() {
     CREATE TABLE IF NOT EXISTS training_reports (id TEXT PRIMARY KEY, session_id TEXT NOT NULL UNIQUE REFERENCES training_sessions(id) ON DELETE CASCADE, report_json TEXT NOT NULL, created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS saved_scenarios (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, name TEXT NOT NULL, product TEXT NOT NULL, description TEXT NOT NULL, identity TEXT NOT NULL, personality TEXT NOT NULL, difficulty TEXT NOT NULL, goal TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS saved_scenarios_owner_idx ON saved_scenarios(owner_id);
+    CREATE TABLE IF NOT EXISTS training_focus (session_id TEXT PRIMARY KEY NOT NULL REFERENCES training_sessions(id) ON DELETE CASCADE, source_session_id TEXT NOT NULL, dimension TEXT NOT NULL CHECK (dimension IN ('need_discovery','value_expression','objection_handling','next_step')), created_at INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS training_focus_source_idx ON training_focus(source_session_id);
   `);
   return { sqlite, db: drizzle(sqlite, { schema }) };
 }

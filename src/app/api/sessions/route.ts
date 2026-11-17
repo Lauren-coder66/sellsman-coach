@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
-import { trainingSessions, messages, trainingReports } from '@/lib/db/schema';
+import { trainingSessions, messages, trainingReports, trainingFocus } from '@/lib/db/schema';
 import { getOrCreateOwnerId } from '@/lib/auth/session';
 import { success, failure, handleError, parseJson } from '@/lib/api';
-import { scenarioSchema } from '@/lib/validation';
+import { sessionCreateSchema } from '@/lib/validation';
 import { getAIProvider } from '@/lib/ai';
+import { focusDetails } from '@/lib/focus';
 import { eq, desc, and, or, lt } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
@@ -14,20 +15,26 @@ const cursorSchema = z.object({ createdAt: z.number().int().nonnegative(), id: z
 
 export async function POST(request: NextRequest) {
   try {
-    const parsed = await parseJson(request, scenarioSchema);
+    const parsed = await parseJson(request, sessionCreateSchema);
     if (parsed.error) return parsed.error;
-    const scenario = parsed.data!;
+    const { sourceSessionId, focusDimension, ...scenario } = parsed.data!;
     const ownerId = await getOrCreateOwnerId();
+    if (sourceSessionId && !db.select({id:trainingSessions.id}).from(trainingSessions).where(and(eq(trainingSessions.id,sourceSessionId),eq(trainingSessions.ownerId,ownerId))).get()) return failure('NOT_FOUND','来源训练不存在',404);
+    const focus = focusDimension ? {dimension:focusDimension,instruction:focusDetails[focusDimension].instruction} : undefined;
     const provider = getAIProvider();
-    const profile = await provider.generateCustomerProfile(scenario);
-    const opening = await provider.generateCustomerOpening(scenario, profile);
+    const profile = await provider.generateCustomerProfile(scenario, focus);
+    const opening = await provider.generateCustomerOpening(scenario, profile, focus);
     const id = randomUUID();
     const now = Date.now();
-    db.transaction(tx => {
+    const created = db.transaction(tx => {
+      if (sourceSessionId && !tx.select({id:trainingSessions.id}).from(trainingSessions).where(and(eq(trainingSessions.id,sourceSessionId),eq(trainingSessions.ownerId,ownerId))).get()) return false;
       tx.insert(trainingSessions).values({id, ownerId, scenarioJson: JSON.stringify(scenario), customerProfileJson: JSON.stringify(profile), status:'active', createdAt:now, updatedAt:now}).run();
       tx.insert(messages).values({id:randomUUID(),sessionId:id,role:'customer',content:opening,sequence:0,createdAt:now}).run();
+      if (sourceSessionId && focusDimension) tx.insert(trainingFocus).values({sessionId:id,sourceSessionId,dimension:focusDimension,createdAt:now}).run();
+      return true;
     });
-    return success({id, status:'active', scenario}, 201);
+    if (!created) return failure('NOT_FOUND','来源训练不存在',404);
+    return success({id, status:'active', scenario, focus}, 201);
   } catch (error) { return handleError(error); }
 }
 
@@ -51,6 +58,6 @@ export async function GET(request: NextRequest) {
     const page = rows.slice(0,limit);
     const last = page.at(-1);
     const nextCursor = rows.length > limit && last ? Buffer.from(JSON.stringify({createdAt:last.createdAt,id:last.id})).toString('base64url') : null;
-    return success({items:page.map(row=>{const saved=db.select().from(trainingReports).where(eq(trainingReports.sessionId,row.id)).get();const scores=saved?JSON.parse(saved.reportJson).scores:null;const score=scores?Object.values(scores as Record<string,{score:number}>).reduce((sum,item)=>sum+item.score,0):null;return {id:row.id,scenario:JSON.parse(row.scenarioJson),status:row.status,createdAt:row.createdAt,updatedAt:row.updatedAt,score}}),nextCursor});
+    return success({items:page.map(row=>{const saved=db.select().from(trainingReports).where(eq(trainingReports.sessionId,row.id)).get();const focus=db.select().from(trainingFocus).where(eq(trainingFocus.sessionId,row.id)).get();const scores=saved?JSON.parse(saved.reportJson).scores:null;const score=scores?Object.values(scores as Record<string,{score:number}>).reduce((sum,item)=>sum+item.score,0):null;return {id:row.id,scenario:JSON.parse(row.scenarioJson),status:row.status,createdAt:row.createdAt,updatedAt:row.updatedAt,score,focusDimension:focus?.dimension??null}}),nextCursor});
   } catch(error) { return handleError(error); }
 }

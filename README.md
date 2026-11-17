@@ -1,4 +1,4 @@
-# 销售陪练 Phase 1.2 · 演示版
+# 销售陪练 Phase 1.3 · 演示版
 
 基于 Next.js、React、TypeScript、Tailwind、SQLite/Drizzle 的个人销售训练产品。当前仅实现 `AI_MODE=mock`，客户回复与报告评分由本地规则生成；页面均明确标为演示模式。无需 API Key。
 
@@ -27,7 +27,7 @@ Vitest 每次使用独立的临时 SQLite 数据库。Playwright 会在 3101 端
 
 ## 数据库
 
-默认文件 `data/sales-coach.sqlite`，启动时只创建缺失表，不清空现有数据。Schema 位于 `src/lib/db/schema.ts`，迁移位于 `drizzle/`。个人场景保存在 `saved_scenarios` 表，通过 `owner_id` 隔离；表与训练会话没有外键，因此编辑或删除个人场景不会改写历史训练的场景快照。变更 Schema 后运行 `npm run db:generate` 和 `npm run db:migrate`。现有迁移使用可重复执行的建表语句，兼容过去由应用自动创建但没有迁移日志的数据库。备份时停止服务后复制 SQLite 文件；运行中备份应使用 SQLite Online Backup API。
+默认文件 `data/sales-coach.sqlite`，启动时只创建缺失表，不清空现有数据。Schema 位于 `src/lib/db/schema.ts`，迁移位于 `drizzle/`。个人场景保存在 `saved_scenarios` 表，通过 `owner_id` 隔离；表与训练会话没有外键，因此编辑或删除个人场景不会改写历史训练的场景快照。专项训练关联保存在 `training_focus` 表：`session_id` 指向当前训练，`source_session_id` 保留来源训练 ID，`dimension` 是四项能力之一。来源归属在创建时检查；来源删除后，专项训练和报告仍保留，只隐藏返回来源入口。变更 Schema 后运行 `npm run db:generate` 和 `npm run db:migrate`。现有迁移使用可重复执行的建表语句，兼容过去由应用自动创建但没有迁移日志的数据库。备份时停止服务后复制 SQLite 文件；运行中备份应使用 SQLite Online Backup API。
 
 匿名用户由 HttpOnly Cookie 区分。清除 Cookie 会失去原训练访问权。删除训练时，消息和报告通过外键级联删除。
 
@@ -36,6 +36,12 @@ Vitest 每次使用独立的临时 SQLite 数据库。Playwright 会在 3101 端
 创建训练页可选六个只读系统模板或自己的个人模板，也可将当前表单保存为个人场景。`/scenarios` 支持新建、编辑、删除、复制系统模板和使用个人场景开始训练。开始训练前仍可修改参数；每次创建新会话并保存当时的参数快照。
 
 个人场景 API：`GET/POST /api/scenarios`、`GET/PUT/DELETE /api/scenarios/:id`。写入时使用 Zod 验证所有字段；读取和修改均按匿名 Cookie 的所有者校验。系统模板仅存在于代码常量中，不能通过个人场景 API 修改或删除。
+
+## 针对性重复训练
+
+结束训练后，在报告的“针对性练习”区选择需求挖掘、价值表达、异议处理或推进下一步。报告有评分时会标出 Mock 演示最低分；样本不足时仍可手动选择。创建页载入来源场景，显示本次练习说明，允许调整参数后创建独立会话；原消息和报告不会复制或改写。训练页、专项报告和历史记录会标明训练重点。专项报告提供返回仍存在的来源训练、再次进行同类专项练习和历史入口。
+
+`POST /api/sessions` 沿用普通场景字段；专项训练额外同时提交 `sourceSessionId` 与 `focusDimension`。服务端核对来源归属，并在创建会话时保存关联。训练重点作为可选上下文传给 `AIProvider`，供以后接入真实模型；当前 Mock 回复和评分仍由本地规则生成，不能用两次 Mock 分数差异判断能力提升。
 
 ## 会话与失败恢复
 

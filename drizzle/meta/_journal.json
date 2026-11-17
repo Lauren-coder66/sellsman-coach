@@ -15,6 +15,13 @@
       "when": 1794921994292,
       "tag": "0001_charming_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794923490269,
+      "tag": "0002_dazzling_switch",
+      "breakpoints": true
     }
   ]
 }

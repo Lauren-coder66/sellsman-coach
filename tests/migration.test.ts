@@ -15,7 +15,7 @@ test('migrations create all tables in an empty database', () => {
   try {
     migrate(drizzle(sqlite), { migrationsFolder });
     const names = sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[];
-    expect(names.map(row => row.name)).toEqual(expect.arrayContaining(['training_sessions', 'messages', 'training_reports', 'saved_scenarios']));
+    expect(names.map(row => row.name)).toEqual(expect.arrayContaining(['training_sessions', 'messages', 'training_reports', 'saved_scenarios', 'training_focus']));
   } finally { sqlite.close(); }
 });
 
@@ -33,5 +33,6 @@ test('migrations preserve a database created before the migration journal existe
     migrate(drizzle(sqlite), { migrationsFolder });
     expect(sqlite.prepare('SELECT id FROM training_sessions WHERE id = ?').get('legacy-session')).toEqual({ id: 'legacy-session' });
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'saved_scenarios'").get()).toBeTruthy();
+    expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'training_focus'").get()).toBeTruthy();
   } finally { sqlite.close(); }
 });

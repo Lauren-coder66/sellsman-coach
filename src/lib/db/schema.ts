@@ -39,3 +39,10 @@ export const savedScenarios = sqliteTable('saved_scenarios', {
   createdAt: integer('created_at').notNull(),
   updatedAt: integer('updated_at').notNull(),
 }, table => [index('saved_scenarios_owner_idx').on(table.ownerId)]);
+
+export const trainingFocus = sqliteTable('training_focus', {
+  sessionId: text('session_id').primaryKey().references(() => trainingSessions.id, { onDelete: 'cascade' }),
+  sourceSessionId: text('source_session_id').notNull(),
+  dimension: text('dimension', { enum: ['need_discovery', 'value_expression', 'objection_handling', 'next_step'] }).notNull(),
+  createdAt: integer('created_at').notNull(),
+}, table => [index('training_focus_source_idx').on(table.sourceSessionId)]);

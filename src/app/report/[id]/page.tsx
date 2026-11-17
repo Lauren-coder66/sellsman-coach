@@ -1,8 +1,53 @@
 'use client';
-import Link from 'next/link';import {useParams} from 'next/navigation';import {useEffect,useState,Suspense} from 'react';import {api} from '@/lib/client';
-type Score={score:number;reason:string};type Issue={message_id:string;quote:string;problem:string;reason:string;suggestion:string;better_expression:string};type Report={summary:string;customer_outcome:string;scores:Record<string,Score>|null;issues:Issue[];strengths:string[];improvements:string[];next_training_suggestion:string};type Message={id:string;role:string;content:string};
-const names:Record<string,string>={need_discovery:'需求挖掘',value_expression:'价值表达',objection_handling:'异议处理',next_step:'推进下一步'};
-function ReportContent(){const {id}=useParams<{id:string}>();const [report,setReport]=useState<Report|null>(null),[messages,setMessages]=useState<Message[]>([]),[error,setError]=useState(''),[show,setShow]=useState(false);useEffect(()=>{api<Report>(`/api/sessions/${id}/report`).then(setReport).catch(e=>setError(e.message));api<{messages:Message[]}>(`/api/sessions/${id}`).then(d=>setMessages(d.messages)).catch(e=>setError(e.message))},[id]);const total=report?.scores?Object.values(report.scores).reduce((n,v)=>n+v.score,0):null;return <main className="mx-auto max-w-5xl p-6 md:p-10"><header className="flex justify-between"><Link href="/" className="font-bold text-teal-800">◈ 销售陪练</Link><Link href="/history">训练历史</Link></header><h1 className="mt-10 text-4xl font-bold">训练复盘</h1><p className="mt-3 text-sm text-amber-800">演示报告：评分由本地规则生成，尚未接入真实 AI。</p>{error&&<p className="mt-6 text-red-700">{error}</p>}{!report&&!error&&<p className="mt-8">正在加载报告…</p>}{report&&<><section className="mt-8 border-y py-8"><div className="flex flex-wrap items-center gap-10"><div><span className="text-6xl font-bold text-teal-700">{total??'—'}</span><span className="text-slate-500"> / 20</span></div><div><p className="font-bold">客户态度：{report.customer_outcome}</p><p className="mt-2 text-slate-600">{report.summary}</p></div></div>{total===null&&<p className="mt-4 text-amber-800">训练样本不足，少于3轮不生成正式能力评分。</p>}</section>{report.scores&&<section className="mt-10"><h2 className="text-2xl font-bold">四项能力</h2><div className="mt-5 grid gap-6 md:grid-cols-2">{Object.entries(report.scores).map(([key,value])=><div key={key}><div className="flex justify-between"><b>{names[key]||key}</b><span>{value.score}/5</span></div><div className="mt-2 h-2 rounded bg-slate-200"><div className="h-full rounded bg-teal-600" style={{width:`${value.score*20}%`}}/></div><p className="mt-2 text-sm text-slate-600">{value.reason}</p></div>)}</div></section>}<section className="mt-12"><h2 className="text-2xl font-bold">具体问题定位</h2>{report.issues.length?report.issues.map(x=><article key={x.message_id} className="mt-4 border-l-4 border-amber-500 bg-white p-5"><p className="text-xs text-slate-500">原始消息 ID：{x.message_id}</p><blockquote className="mt-2 font-semibold">「{x.quote}」</blockquote><p className="mt-3">{x.problem}：{x.reason}</p><p className="mt-2 text-teal-800">建议：{x.suggestion}</p><p className="mt-2 font-medium text-teal-800">推荐表达：{x.better_expression}</p></article>):<p className="mt-4 text-slate-500">本次没有可引用的具体问题。</p>}</section><section className="mt-12 grid gap-6 md:grid-cols-2"><div><h2 className="font-bold">做得好的地方</h2>{report.strengths.map(x=><p key={x} className="mt-2">• {x}</p>)}</div><div><h2 className="font-bold">需要改善</h2>{report.improvements.map(x=><p key={x} className="mt-2">• {x}</p>)}</div></section><p className="mt-8 rounded-xl bg-teal-50 p-5">下一次训练：{report.next_training_suggestion}</p><div className="mt-8 flex flex-wrap gap-3"><button onClick={()=>setShow(!show)} className="rounded-lg border px-4 py-2">{show?'收起':'查看'}完整对话</button><Link href={`/create?from=${id}`} className="rounded-lg bg-teal-700 px-4 py-2 text-white">再次练习</Link><Link href="/history" className="rounded-lg border px-4 py-2">历史训练</Link><Link href="/" className="rounded-lg border px-4 py-2">返回首页</Link></div>{show&&<div className="mt-6 divide-y border-y">{messages.map(m=><div key={m.id} className="py-3"><b>{m.role==='user'?'销售人员':'模拟客户'}：</b>{m.content}</div>)}</div>}</>}</main>}
 
-export default function ReportPage(){return <Suspense fallback={<p className="p-6">加载报告…</p>}><ReportContent/></Suspense>}
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { api } from '@/lib/client';
+import { focusDetails, focusDimensions, type FocusDimension } from '@/lib/focus';
+
+type Score = { score: number; reason: string };
+type Issue = { message_id: string; quote: string; problem: string; reason: string; suggestion: string; better_expression: string };
+type Report = { summary: string; customer_outcome: string; scores: Record<FocusDimension, Score> | null; issues: Issue[]; strengths: string[]; improvements: string[]; next_training_suggestion: string };
+type Message = { id: string; role: string; content: string };
+type SessionData = { session: { focus: { dimension: FocusDimension; sourceSessionId: string; sourceAvailable: boolean } | null }; messages: Message[] };
+
+function ReportContent() {
+  const { id } = useParams<{ id: string }>();
+  const [report, setReport] = useState<Report | null>(null);
+  const [session, setSession] = useState<SessionData['session'] | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [error, setError] = useState('');
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    api<Report>(`/api/sessions/${id}/report`).then(setReport).catch(cause => setError((cause as Error).message));
+    api<SessionData>(`/api/sessions/${id}`).then(data => { setSession(data.session); setMessages(data.messages); }).catch(cause => setError((cause as Error).message));
+  }, [id]);
+
+  const total = report?.scores ? focusDimensions.reduce((sum, dimension) => sum + report.scores![dimension].score, 0) : null;
+  const lowest = report?.scores ? focusDimensions.reduce((best, dimension) => report.scores![dimension].score < report.scores![best].score ? dimension : best) : null;
+  const focus = session?.focus;
+
+  return <main className="mx-auto max-w-5xl p-6 md:p-10">
+    <header className="flex justify-between"><Link href="/" className="font-bold text-teal-800">◈ 销售陪练</Link><Link href="/history">训练历史</Link></header>
+    <h1 className="mt-10 text-4xl font-bold">训练复盘</h1>
+    <p className="mt-3 text-sm text-amber-800">演示报告：评分由本地规则生成，尚未接入真实 AI。</p>
+    {error && <p role="alert" className="mt-6 text-red-700">{error}</p>}
+    {!report && !error && <p className="mt-8">正在加载报告…</p>}
+    {report && <>
+      {focus && <section className="mt-8 rounded-xl bg-teal-50 p-5 text-teal-900"><b>本次训练重点：{focusDetails[focus.dimension].label}</b><p className="mt-2">{focusDetails[focus.dimension].instruction}</p>{focus.sourceAvailable && <Link href={`/train/${focus.sourceSessionId}`} className="mt-3 inline-block underline">返回来源训练</Link>}</section>}
+      <section className="mt-8 border-y py-8"><div className="flex flex-wrap items-center gap-10"><div><span className="text-6xl font-bold text-teal-700">{total ?? '—'}</span><span className="text-slate-500"> / 20</span></div><div><p className="font-bold">客户态度：{report.customer_outcome}</p><p className="mt-2 text-slate-600">{report.summary}</p></div></div>{total === null && <p className="mt-4 text-amber-800">训练样本不足，少于3轮不生成正式能力评分。你仍可手动选择专项练习。</p>}</section>
+      {report.scores && <section className="mt-10"><h2 className="text-2xl font-bold">四项能力</h2><div className="mt-5 grid gap-6 md:grid-cols-2">{focusDimensions.map(dimension => <div key={dimension}><div className="flex justify-between"><b>{focusDetails[dimension].label}</b><span>{report.scores![dimension].score}/5</span></div><div className="mt-2 h-2 rounded bg-slate-200"><div className="h-full rounded bg-teal-600" style={{ width: `${report.scores![dimension].score * 20}%` }} /></div><p className="mt-2 text-sm text-slate-600">{report.scores![dimension].reason}</p></div>)}</div></section>}
+      <section className="mt-12"><h2 className="text-2xl font-bold">针对性练习</h2><p className="mt-2 text-sm text-slate-600">{lowest ? `根据 Mock 演示评分，最低分维度是${focusDetails[lowest].label}；你可以选择任一维度。` : '本次没有正式评分，请自行选择练习重点。'}</p><div className="mt-5 grid gap-3 md:grid-cols-2">{focusDimensions.map(dimension => <Link key={dimension} href={`/create?from=${id}&focus=${dimension}`} className={`rounded-xl border p-5 hover:border-teal-600 ${dimension === lowest ? 'border-teal-600 bg-teal-50' : 'bg-white'}`}><div className="flex justify-between gap-3"><b>{focusDetails[dimension].label}</b>{dimension === lowest && <span className="text-xs text-teal-800">Mock 演示最低分</span>}</div><p className="mt-2 text-sm text-slate-600">{focusDetails[dimension].instruction}</p></Link>)}</div></section>
+      <section className="mt-12"><h2 className="text-2xl font-bold">具体问题定位</h2>{report.issues.length ? report.issues.map(issue => <article key={issue.message_id} className="mt-4 border-l-4 border-amber-500 bg-white p-5"><p className="text-xs text-slate-500">原始消息 ID：{issue.message_id}</p><blockquote className="mt-2 font-semibold">「{issue.quote}」</blockquote><p className="mt-3">{issue.problem}：{issue.reason}</p><p className="mt-2 text-teal-800">建议：{issue.suggestion}</p><p className="mt-2 font-medium text-teal-800">推荐表达：{issue.better_expression}</p></article>) : <p className="mt-4 text-slate-500">本次没有可引用的具体问题。</p>}</section>
+      <section className="mt-12 grid gap-6 md:grid-cols-2"><div><h2 className="font-bold">做得好的地方</h2>{report.strengths.map(value => <p key={value} className="mt-2">• {value}</p>)}</div><div><h2 className="font-bold">需要改善</h2>{report.improvements.map(value => <p key={value} className="mt-2">• {value}</p>)}</div></section>
+      <p className="mt-8 rounded-xl bg-teal-50 p-5">下一次训练：{report.next_training_suggestion}</p>
+      <div className="mt-8 flex flex-wrap gap-3"><button onClick={() => setShow(!show)} className="rounded-lg border px-4 py-2">{show ? '收起' : '查看'}完整对话</button><Link href={`/create?from=${id}`} className="rounded-lg bg-teal-700 px-4 py-2 text-white">再次练习</Link>{focus && <Link href={`/create?from=${id}&focus=${focus.dimension}`} className="rounded-lg border px-4 py-2">再次进行同类专项练习</Link>}<Link href="/history" className="rounded-lg border px-4 py-2">历史训练</Link><Link href="/" className="rounded-lg border px-4 py-2">返回首页</Link></div>
+      {show && <div className="mt-6 divide-y border-y">{messages.map(message => <div key={message.id} className="py-3"><b>{message.role === 'user' ? '销售人员' : '模拟客户'}：</b>{message.content}</div>)}</div>}
+    </>}
+  </main>;
+}
+
+export default function ReportPage() { return <Suspense fallback={<p className="p-6">加载报告…</p>}><ReportContent /></Suspense>; }
 

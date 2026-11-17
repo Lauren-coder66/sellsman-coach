@@ -5,9 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/client';
 import type { Scenario } from '@/lib/ai/provider';
+import { focusDetails, type FocusDimension } from '@/lib/focus';
 
 type Msg = { id: string; role: 'user' | 'customer'; content: string; sequence: number; createdAt: number };
-type Data = { session: { id: string; scenario: Scenario; status: string }; messages: Msg[] };
+type Data = { session: { id: string; scenario: Scenario; status: string; focus: { dimension: FocusDimension; sourceSessionId: string; sourceAvailable: boolean } | null }; messages: Msg[] };
 
 function TrainContent() {
   const { id } = useParams<{ id: string }>();
@@ -81,6 +82,7 @@ function TrainContent() {
       <button onClick={finish} disabled={busy || !data || !['active', 'failed', 'finishing', 'completed'].includes(data.session.status)} className="rounded-lg border px-4 py-2 disabled:opacity-50">{finishLabel}</button>
     </header>
     <p className="bg-amber-50 px-4 py-2 text-sm text-amber-900">演示模式：当前客户回复由本地规则模拟，并非真实 AI。 · {turns}/30 轮</p>
+    {data?.session.focus && <p className="bg-teal-50 px-4 py-3 text-sm text-teal-900"><b>本次训练重点：{focusDetails[data.session.focus.dimension].label}</b> · {focusDetails[data.session.focus.dimension].instruction}</p>}
     <section className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-100 p-4">
       {loading && <p>正在恢复对话…</p>}
       {data?.messages.map(message => <div key={message.id} className={`max-w-[85%] rounded-xl p-4 ${message.role === 'user' ? 'ml-auto bg-teal-700 text-white' : 'bg-white'}`}><div className="mb-2 text-xs opacity-70">{message.role === 'user' ? '销售人员' : '模拟客户'} · {new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</div>{message.content}</div>)}
