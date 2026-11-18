@@ -1,0 +1,77 @@
+name: Linux full E2E diagnostic
+
+on:
+  push:
+    branches:
+      - 'full-e2e-diagnostic/**'
+
+permissions:
+  contents: read
+
+jobs:
+  full-e2e:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      AI_MODE: mock
+      E2E_TEST: '1'
+      DIAGNOSTIC_RUN: '1'
+      ACCOUNT_REQUIRED: '0'
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run complete E2E three times with workers=2
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p verify-evidence
+          failed=0
+          for run in 1 2 3; do
+            db_dir="/tmp/sales-coach-e2e-full-$run"
+            log="verify-evidence/run-$run.log"
+            results="verify-evidence/run-$run/test-results"
+            database_evidence="verify-evidence/run-$run/database"
+            mkdir -p "$db_dir" "$results"
+            echo "=== full E2E run $run started $(date -u +%FT%TZ) ===" | tee "$log"
+            if SALES_COACH_E2E_DB="$db_dir/test.sqlite" npm run test:e2e -- --workers=2 --trace=retain-on-failure --output="$results" 2>&1 | tee -a "$log"; then
+              rc=0
+            else
+              rc=$?
+              failed=1
+            fi
+            echo "=== full E2E run $run finished $(date -u +%FT%TZ), exit=$rc ===" | tee -a "$log"
+            if [ "$rc" -eq 0 ]; then
+              rm -rf "$db_dir"
+            else
+              mkdir -p "$database_evidence"
+              if [ -f "$db_dir/test.sqlite" ]; then
+                if ! cp -a "$db_dir/test.sqlite" "$database_evidence/test.sqlite"; then
+                  echo "WARNING: failed to copy main database" | tee -a "$log"
+                fi
+              else
+                echo "WARNING: main database file does not exist" | tee -a "$log"
+              fi
+              for sidecar in test.sqlite-wal test.sqlite-shm; do
+                if [ -f "$db_dir/$sidecar" ]; then
+                  if ! cp -a "$db_dir/$sidecar" "$database_evidence/$sidecar"; then
+                    echo "WARNING: failed to copy $sidecar" | tee -a "$log"
+                  fi
+                fi
+              done
+              echo "retained database: $db_dir" | tee -a "$log"
+            fi
+          done
+          exit "$failed"
+      - name: Upload full E2E diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-full-e2e-diagnostic-${{ github.sha }}
+          path: verify-evidence
+          retention-days: 14
