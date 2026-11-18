@@ -1,8 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import path from 'node:path';
 
 type Message = { id: string; role: 'user' | 'customer'; sequence: number };
+
+function sqliteSnapshot(file: string, sqlite: Database.Database) {
+  const realpath = fs.realpathSync(file);
+  const stat = fs.statSync(file);
+  const snapshot = {
+    databaseUrl: path.resolve(file), realpath, dev: stat.dev, ino: stat.ino,
+    databaseList: sqlite.pragma('database_list'),
+    journalMode: sqlite.pragma('journal_mode', { simple: true }),
+    walExists: fs.existsSync(`${file}-wal`),
+    walSize: fs.existsSync(`${file}-wal`) ? fs.statSync(`${file}-wal`).size : 0,
+  };
+  return snapshot;
+}
 
 test('real API keeps concurrent sends and finishes idempotent and isolated', async ({ page, browser }) => {
   let id: string | undefined;
@@ -63,9 +78,30 @@ test('real API recovers a persisted pending reply and a failed report', async ({
       page.waitForResponse(response => response.url().endsWith(`/api/sessions/${id}/messages`) && response.request().method() === 'POST'),
       retryButton.click(),
     ]);
+    const retryJson = await retry.json();
+    console.log(JSON.stringify({ diagnostic: 'retry-response', status: retry.status(), requestId, response: retryJson }));
     expect(retry.status()).toBe(200);
     await expect(retryButton).toHaveCount(0);
-    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM messages WHERE session_id = ? AND role = ?').get(id, 'customer')).toMatchObject({ count: 2 });
+    const detailAfterRetry = await page.request.get(`/api/sessions/${id}`);
+    const detailJson = await detailAfterRetry.json();
+    console.log(JSON.stringify({ diagnostic: 'retry-get', status: detailAfterRetry.status(), session: detailJson.data?.session?.status, messages: detailJson.data?.messages?.map((message: Message) => ({ id: message.id, role: message.role, sequence: message.sequence })) }));
+    const originalSnapshot = sqliteSnapshot(file, sqlite);
+    const originalCounts = {
+      total: sqlite.prepare('SELECT COUNT(*) AS count FROM messages WHERE session_id = ?').get(id),
+      customers: sqlite.prepare('SELECT COUNT(*) AS count FROM messages WHERE session_id = ? AND role = ?').get(id, 'customer'),
+      last: sqlite.prepare('SELECT id, role, sequence FROM messages WHERE session_id = ? ORDER BY sequence DESC LIMIT 1').get(id),
+    };
+    sqlite.close();
+    sqlite = new Database(file);
+    sqlite.pragma('busy_timeout = 30000');
+    const reopenedSnapshot = sqliteSnapshot(file, sqlite);
+    const reopenedCounts = {
+      total: sqlite.prepare('SELECT COUNT(*) AS count FROM messages WHERE session_id = ?').get(id),
+      customers: sqlite.prepare('SELECT COUNT(*) AS count FROM messages WHERE session_id = ? AND role = ?').get(id, 'customer'),
+      last: sqlite.prepare('SELECT id, role, sequence FROM messages WHERE session_id = ? ORDER BY sequence DESC LIMIT 1').get(id),
+    };
+    console.log(JSON.stringify({ diagnostic: 'sqlite-comparison', originalSnapshot, originalCounts, reopenedSnapshot, reopenedCounts }));
+    expect(reopenedCounts.customers).toMatchObject({ count: 2 });
     sqlite.prepare('UPDATE training_sessions SET status = ?, updated_at = ? WHERE id = ?').run('failed', Date.now(), id);
     const recovered = await page.request.post(`/api/sessions/${id}/finish`);
     expect(recovered.status()).toBe(200);

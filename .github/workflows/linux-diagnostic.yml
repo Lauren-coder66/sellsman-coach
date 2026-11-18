@@ -1,0 +1,52 @@
+name: Linux diagnostic
+
+on:
+  push:
+    branches:
+      - 'diagnostics/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pending-reply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AI_MODE: mock
+      E2E_TEST: '1'
+      DIAGNOSTIC_RUN: '1'
+      ACCOUNT_REQUIRED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run isolated recovery test five times
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p verify-evidence
+          : > verify-evidence/pending-reply.log
+          failed=0
+          for run in 1 2 3 4 5; do
+            echo "=== diagnostic run $run ===" | tee -a verify-evidence/pending-reply.log
+            db_dir="$RUNNER_TEMP/sales-coach-e2e-$run"
+            mkdir -p "$db_dir"
+            if ! SALES_COACH_E2E_DB="$db_dir/test.sqlite" npx playwright test e2e/api-stability.spec.ts -g "recovers a persisted pending reply" --workers=1 2>&1 | tee -a verify-evidence/pending-reply.log; then
+              failed=1
+            fi
+            rm -rf "$db_dir"
+          done
+          exit "$failed"
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-diagnostic-${{ github.sha }}
+          path: verify-evidence/pending-reply.log
+          retention-days: 14

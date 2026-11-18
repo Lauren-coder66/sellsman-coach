@@ -18,6 +18,9 @@ const problem = (code: string, message: string, status: number): Problem => ({ o
 const owned = (id: string, ownerId: string) => and(eq(trainingSessions.id, id), eq(trainingSessions.ownerId, ownerId));
 const lease = (session: Session) => and(owned(session.id, session.ownerId), eq(trainingSessions.status, session.status), eq(trainingSessions.updatedAt, session.updatedAt));
 const nextStamp = (session: Session) => Math.max(Date.now(), session.updatedAt + 1);
+const diagnostic = (event: string, details: Record<string, unknown>) => {
+  if (process.env.E2E_TEST === '1') console.log(JSON.stringify({ diagnostic: event, ...details }));
+};
 const focusFor = (id: string) => {
   const row = db.select().from(trainingFocus).where(eq(trainingFocus.sessionId, id)).get();
   return row ? { dimension: row.dimension, instruction: focusDetails[row.dimension].instruction } : undefined;
@@ -32,7 +35,10 @@ export async function sendMessage(id: string, ownerId: string, content: string, 
     if (existing) {
       if (existing.role !== 'user' || existing.content !== content) return problem('DUPLICATE', '请求 ID 冲突', 409);
       const following = history.find(message => message.sequence === existing.sequence + 1);
-      if (following?.role === 'customer') return { ok: true as const, data: { reply: following.content, alreadySaved: true } };
+      if (following?.role === 'customer') {
+        diagnostic('send-already-saved', { sessionId: id, requestId, sequence: following.sequence });
+        return { ok: true as const, data: { reply: following.content, alreadySaved: true } };
+      }
       if (history.at(-1)?.id !== requestId) return problem('CONFLICT', '历史消息已更新，请刷新', 409);
     } else {
       if (history.at(-1)?.role === 'user') return problem('PENDING_REPLY', '上一条客户回复尚未完成，请先重试', 409);
@@ -42,23 +48,29 @@ export async function sendMessage(id: string, ownerId: string, content: string, 
     if (session.status !== 'active' && session.status !== 'replying') return problem('NOT_ACTIVE', '训练已结束', 409);
     const stamp = nextStamp(session);
     const changed = tx.update(trainingSessions).set({ status: 'replying', updatedAt: stamp }).where(lease(session)).run();
+    diagnostic('send-claim', { sessionId: id, requestId, statusChanges: changed.changes, insertedUser: !existing, sequence: history.length });
     if (!changed.changes) return problem('IN_PROGRESS', '会话状态已更新，请重试', 409);
     if (!existing) tx.insert(messages).values({ id: requestId, sessionId: id, role: 'user', content, sequence: history.length, createdAt: Date.now() }).run();
     return { ok: true as const, stamp, session, history: existing ? history : [...history, { id: requestId, sessionId: id, role: 'user' as const, content, sequence: history.length, createdAt: Date.now() }] };
   });
+  diagnostic('send-claim-committed', { sessionId: id, requestId, ok: claimed.ok, alreadySaved: claimed.ok && Boolean(claimed.data) });
   if (!claimed.ok) return claimed;
   if (claimed.data) return { ok: true, data: claimed.data };
   try {
     const profile = JSON.parse(claimed.session.customerProfileJson) as CustomerProfile;
     const reply = await aiOwner.run(ownerId, () => (provider ?? getAIProvider(profile.mode ?? 'mock')).generateCustomerReply(JSON.parse(claimed.session.scenarioJson), profile, claimed.history, focusFor(id)));
     if (!reply.trim()) throw new Error('客户回复为空');
-    return db.transaction(tx => {
+    const finalized = db.transaction(tx => {
       const changed = tx.update(trainingSessions).set({ status: 'active', updatedAt: Date.now() }).where(and(owned(id, ownerId), eq(trainingSessions.status, 'replying'), eq(trainingSessions.updatedAt, claimed.stamp))).run();
       if (!changed.changes) return problem('IN_PROGRESS', '本次回复已由其他请求接管，请刷新', 409);
-      tx.insert(messages).values({ id: randomUUID(), sessionId: id, role: 'customer', content: reply, sequence: claimed.history.length, createdAt: Date.now() }).run();
+      const inserted = tx.insert(messages).values({ id: randomUUID(), sessionId: id, role: 'customer', content: reply, sequence: claimed.history.length, createdAt: Date.now() }).run();
+      diagnostic('send-reply-transaction', { sessionId: id, requestId, statusChanges: changed.changes, messageChanges: inserted.changes, sequence: claimed.history.length });
       return { ok: true as const, data: { reply, alreadySaved: false } };
     });
+    diagnostic('send-reply-committed', { sessionId: id, requestId, ok: finalized.ok });
+    return finalized;
   } catch (error) {
+    diagnostic('send-reply-error', { sessionId: id, requestId, error: error instanceof Error ? error.name : 'unknown' });
     db.update(trainingSessions).set({ status: 'active', updatedAt: Date.now() }).where(and(owned(id, ownerId), eq(trainingSessions.status, 'replying'), eq(trainingSessions.updatedAt, claimed.stamp))).run();
     if (error instanceof AIRequestTimeoutError) return problem('AI_TIMEOUT', error.message, 504);
     if (error instanceof AIQuotaError || error instanceof AIRateLimitError) return problem('AI_RATE_LIMIT', error.message, 429);
