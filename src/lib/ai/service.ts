@@ -111,6 +111,9 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
   } catch (error) {
     if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) { outcome = 'timeout'; throw new AIRequestTimeoutError(); }
     if (error instanceof z.ZodError) {
+      if (operation === 'report' && outputError === 'schema') {
+        console.info('[ai-report-validation]', JSON.stringify(error.issues.map(issue => ({ code: issue.code, path: issue.path }))));
+      }
       const OutputError = outputError === 'schema' ? AIInvalidStructureError : AIModelOutputError;
       throw new OutputError('AI 返回内容不符合预期格式，请重试');
     }
