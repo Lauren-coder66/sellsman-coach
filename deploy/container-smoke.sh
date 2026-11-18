@@ -6,7 +6,10 @@ project="sales-ci-$(date +%s)"
 compose() { docker compose --project-name "$project" --env-file "$tmp/.env.production" -f "$tmp/compose.yaml" -f "$tmp/staging.yaml" "$@"; }
 cleanup() {
   code="$?"
-  if [ "$code" -ne 0 ]; then compose ps -a || true; fi
+  if [ "$code" -ne 0 ]; then
+    compose ps -a || true
+    compose logs --no-color --tail 100 app caddy 2>&1 || true
+  fi
   compose down -v >/dev/null 2>&1 || true
   exit "$code"
 }
@@ -21,9 +24,11 @@ services:
   app:
     environment:
       RELEASE_PROFILE: staging
+      DATABASE_URL: /var/lib/sales-coach/sales-coach.sqlite
   caddy:
     ports: !override ["127.0.0.1:3180:3180", "127.0.0.1:3443:3443"]
 EOF
+compose config --format json | jq -e '.services.app.environment.DATABASE_URL == "/var/lib/sales-coach/sales-coach.sqlite"' >/dev/null
 docker run --rm -e PUBLIC_DOMAIN=localhost -v "$tmp/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.11.9-alpine caddy validate --config /etc/caddy/Caddyfile
 compose up -d --no-build --wait
 for i in 1 2 3 4 5 6 7 8 9 10; do
