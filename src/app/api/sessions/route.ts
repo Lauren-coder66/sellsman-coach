@@ -2,15 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { trainingSessions, messages, trainingReports, trainingFocus } from '@/lib/db/schema';
-import { getOrCreateOwnerId } from '@/lib/auth/session';
+import { canUseOwner, getOrCreateOwnerId, getOwnerId } from '@/lib/auth/session';
 import { success, failure, handleError, parseJson } from '@/lib/api';
 import { sessionCreateSchema } from '@/lib/validation';
 import { getAIProvider } from '@/lib/ai';
 import { focusDetails } from '@/lib/focus';
 import { eq, desc, and, or, lt } from 'drizzle-orm';
-import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { reportSource } from '@/lib/report';
+import { aiOwner } from '@/lib/ai/usage-context';
 
 const cursorSchema = z.object({ createdAt: z.number().int().nonnegative(), id: z.string().uuid() });
 
@@ -18,33 +18,48 @@ export async function POST(request: NextRequest) {
   try {
     const parsed = await parseJson(request, sessionCreateSchema);
     if (parsed.error) return parsed.error;
-    const { sourceSessionId, focusDimension, ...scenario } = parsed.data!;
+    const { requestId, sourceSessionId, focusDimension, ...scenario } = parsed.data!;
     const ownerId = await getOrCreateOwnerId();
+    const id = requestId ?? randomUUID();
+    const scenarioJson = JSON.stringify(scenario);
+    const resolveExisting = () => {
+      const row = db.select().from(trainingSessions).where(eq(trainingSessions.id, id)).get();
+      if (!row) return null;
+      if (row.ownerId !== ownerId || row.scenarioJson !== scenarioJson) return failure('DUPLICATE', '创建请求 ID 已被使用', 409);
+      const savedFocus = db.select().from(trainingFocus).where(eq(trainingFocus.sessionId, id)).get();
+      if (savedFocus?.sourceSessionId !== sourceSessionId || savedFocus?.dimension !== focusDimension) return failure('DUPLICATE', '创建请求内容已变更', 409);
+      return success({ id, status: row.status, replayed: true });
+    };
+    const existing = resolveExisting();
+    if (existing) return existing;
     if (sourceSessionId && !db.select({id:trainingSessions.id}).from(trainingSessions).where(and(eq(trainingSessions.id,sourceSessionId),eq(trainingSessions.ownerId,ownerId))).get()) return failure('NOT_FOUND','来源训练不存在',404);
     const focus = focusDimension ? {dimension:focusDimension,instruction:focusDetails[focusDimension].instruction} : undefined;
     const provider = getAIProvider();
-    const setup = provider.generateCustomerSetup && process.env.AI_CREATE_STRATEGY === 'combined'
-      ? await provider.generateCustomerSetup(scenario, focus)
-      : null;
-    const profile = setup?.profile ?? await provider.generateCustomerProfile(scenario, focus);
-    const opening = setup?.opening ?? await provider.generateCustomerOpening(scenario, profile, focus);
-    const id = randomUUID();
+    const { profile, opening } = await aiOwner.run(ownerId, async () => {
+      if (provider.generateCustomerSetup && process.env.AI_CREATE_STRATEGY === 'combined') {
+        return provider.generateCustomerSetup(scenario, focus);
+      }
+      const profile = await provider.generateCustomerProfile(scenario, focus);
+      return { profile, opening: await provider.generateCustomerOpening(scenario, profile, focus) };
+    });
     const now = Date.now();
     const created = db.transaction(tx => {
+      if (!canUseOwner(ownerId)) return false;
+      if (tx.select({id:trainingSessions.id}).from(trainingSessions).where(eq(trainingSessions.id,id)).get()) return false;
       if (sourceSessionId && !tx.select({id:trainingSessions.id}).from(trainingSessions).where(and(eq(trainingSessions.id,sourceSessionId),eq(trainingSessions.ownerId,ownerId))).get()) return false;
-      tx.insert(trainingSessions).values({id, ownerId, scenarioJson: JSON.stringify(scenario), customerProfileJson: JSON.stringify(profile), status:'active', createdAt:now, updatedAt:now}).run();
+      tx.insert(trainingSessions).values({id, ownerId, scenarioJson, customerProfileJson: JSON.stringify(profile), status:'active', createdAt:now, updatedAt:now}).run();
       tx.insert(messages).values({id:randomUUID(),sessionId:id,role:'customer',content:opening,sequence:0,createdAt:now}).run();
       if (sourceSessionId && focusDimension) tx.insert(trainingFocus).values({sessionId:id,sourceSessionId,dimension:focusDimension,createdAt:now}).run();
       return true;
     });
-    if (!created) return failure('NOT_FOUND','来源训练不存在',404);
+    if (!created) return resolveExisting() ?? failure('NOT_FOUND','账号或来源训练不可用',404);
     return success({id, status:'active', scenario, focus}, 201);
   } catch (error) { return handleError(error); }
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const ownerId = (await cookies()).get('sales_coach_owner')?.value;
+    const ownerId = await getOwnerId();
     if (!ownerId) return success({items:[],nextCursor:null});
     const status = request.nextUrl.searchParams.get('status');
     const requestedLimit = Number(request.nextUrl.searchParams.get('limit') || 20);

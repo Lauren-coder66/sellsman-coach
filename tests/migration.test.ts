@@ -15,7 +15,7 @@ test('migrations create all tables in an empty database', () => {
   try {
     migrate(drizzle(sqlite), { migrationsFolder });
     const names = sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[];
-    expect(names.map(row => row.name)).toEqual(expect.arrayContaining(['training_sessions', 'messages', 'training_reports', 'saved_scenarios', 'training_focus']));
+    expect(names.map(row => row.name)).toEqual(expect.arrayContaining(['training_sessions', 'messages', 'training_reports', 'saved_scenarios', 'training_focus', 'ai_usage', 'subscriptions', 'billing_orders', 'voice_attempts']));
   } finally { sqlite.close(); }
 });
 

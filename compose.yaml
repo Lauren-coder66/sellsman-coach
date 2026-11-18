@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    image: sales-coach:${APP_RELEASE:-local}
+    restart: unless-stopped
+    env_file: [.env.production]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-/var/lib/sales-coach/sales-coach.sqlite}
+    volumes:
+      - sales_data:/var/lib/sales-coach
+      - sales_backups:/var/backups/sales-coach
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?Set PUBLIC_DOMAIN}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+volumes:
+  sales_data:
+  sales_backups:
+  caddy_data:
+  caddy_config:

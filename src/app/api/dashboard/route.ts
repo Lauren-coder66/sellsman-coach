@@ -1,4 +1,4 @@
-import {cookies} from 'next/headers';
+import {getOwnerId} from '@/lib/auth/session';
 import {eq,desc,inArray} from 'drizzle-orm';
 import {db} from '@/lib/db';
 import {trainingSessions,messages,trainingReports} from '@/lib/db/schema';
@@ -6,8 +6,8 @@ import {success,handleError} from '@/lib/api';
 import {localDayKey,startDayKey} from '@/lib/progress';
 import {getAIMode} from '@/lib/ai';
 export async function GET(){
-  const ownerId=(await cookies()).get('sales_coach_owner')?.value;
   try{
+  const ownerId=await getOwnerId();
   if(!ownerId)return success({aiMode:getAIMode(),total:0,completed:0,last7:0,turns:0,latest:null,latestScore:null,recent:[]});
   const sessions=db.select().from(trainingSessions).where(eq(trainingSessions.ownerId,ownerId)).orderBy(desc(trainingSessions.createdAt)).all();
   const now=Date.now(),today=localDayKey(now),start7=startDayKey(now,7);

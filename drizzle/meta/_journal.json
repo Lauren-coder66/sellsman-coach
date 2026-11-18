@@ -22,6 +22,27 @@
       "when": 1794923490269,
       "tag": "0002_dazzling_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794979434869,
+      "tag": "0003_blue_mulholland_black",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794979881322,
+      "tag": "0004_windy_the_executioner",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794999258492,
+      "tag": "0005_mixed_mojo",
+      "breakpoints": true
     }
   ]
 }

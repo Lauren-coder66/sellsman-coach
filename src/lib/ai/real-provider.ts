@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { callModel } from './service';
 import { generateRealReport } from './real-report';
+import { repeatsCustomerQuestion } from './conversation-quality';
 import type { AIProvider, CustomerProfile, Scenario } from './provider';
 
 const profileSchema = z.object({
@@ -46,8 +47,8 @@ export const realProvider: AIProvider = {
     return result.reply;
   },
   async generateCustomerReply(scenario, profile: CustomerProfile, messages, focus) {
-    const previous = messages.findLast(message => message.role === 'customer')?.content.trim();
-    const schema = replySchema.refine(result => result.reply !== previous, '客户回复与上一轮完全相同');
+    const previous = messages.filter(message => message.role === 'customer').map(message => message.content);
+    const schema = replySchema.refine(result => !repeatsCustomerQuestion(result.reply, previous), '客户重复追问同一顾虑');
     const result = await callModel('reply', customerPrompt, { scenario, profile, focus, difficultyBehavior: difficultyRules[scenario.difficulty], history: messages.map(({ role, content }) => ({ role, content })) }, schema, 1200, { retryFormat: true });
     return result.reply;
   },

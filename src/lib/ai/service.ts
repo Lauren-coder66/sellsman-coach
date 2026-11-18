@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { aiOwner, AIQuotaError } from './usage-context';
 
 const responseSchema = z.object({
   model: z.string().optional(),
@@ -55,6 +56,13 @@ export async function callModel<T>(operation: string, system: string, input: unk
 }
 
 async function requestModel<T>(config: ReturnType<typeof configuration>, operation: string, system: string, input: unknown, schema: z.ZodType<T>, maxOutputTokens: number, signal: AbortSignal, options: ModelOptions): Promise<T> {
+  const owner = aiOwner.getStore();
+  if (!owner && process.env.ACCOUNT_REQUIRED === '1') throw new AIQuotaError('该操作需要账号与用量记录。');
+  const payload = JSON.stringify(input);
+  const ledger = owner ? await import('@/lib/usage') : null;
+  const reservation = owner && ledger
+    ? ledger.reserveUsage(owner, config.provider, config.model, operation, Buffer.byteLength(system + payload, 'utf8') + maxOutputTokens + 128)
+    : null;
   const start = Date.now();
   let usage: z.infer<typeof responseSchema>['usage'];
   let actualModel: string | null = null;
@@ -75,7 +83,7 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
         reasoning: config.provider === 'openrouter' && options.openRouterReasoningEffort ? { effort: options.openRouterReasoningEffort } : undefined,
         enable_thinking: config.provider === 'bailian' ? false : undefined,
         response_format: { type: 'json_object' },
-        messages: [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify(input) }],
+        messages: [{ role: 'system', content: system }, { role: 'user', content: payload }],
       }),
     });
     if (response.status === 408 || response.status === 504) { outcome = 'timeout'; throw new AIRequestTimeoutError(); }
@@ -121,6 +129,10 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
     if (error instanceof Error && error.message.startsWith('AI ')) throw error;
     throw new Error('AI 服务暂时不可用，请重试');
   } finally {
+    if (ledger && reservation) ledger.closeUsage(reservation, {
+      model: actualModel, promptTokens: usage?.prompt_tokens, completionTokens: usage?.completion_tokens,
+      totalTokens: usage?.total_tokens, cost: usage?.cost, outcome,
+    });
     console.info('[ai-call]', JSON.stringify({ operation, provider: config.provider, requestedModel: config.model, actualModel, outcome, durationMs: Date.now() - start, maxOutputTokens, finishReason, upstreamCode, outputError, promptTokens: usage?.prompt_tokens ?? null, completionTokens: usage?.completion_tokens ?? null, reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens ?? null, totalTokens: usage?.total_tokens ?? null, cost: usage?.cost ?? null }));
   }
 }

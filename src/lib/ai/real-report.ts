@@ -35,6 +35,8 @@ export const generateRealReport: AIProvider['generateTrainingReport'] = async (s
     message: '报告引用与原始消息不符',
   });
   const bailian = process.env.AI_PROVIDER === 'bailian';
+  const lastCustomer = history.findLast(message => message.role === 'customer');
+  const customerOutcome = lastCustomer ? `客户最后回复：「${lastCustomer.content}」` : '本次没有客户回复。';
   let scoringModel: string | undefined;
   const options = {
     retryFormat: true,
@@ -62,9 +64,9 @@ export const generateRealReport: AIProvider['generateTrainingReport'] = async (s
       ...result,
       issues: result.issues.map(({ evidence_ref, ...issue }) => ({ ...issue, ...evidence.get(evidence_ref) })),
     });
-    return { ...report, scoringModel };
+    return { ...report, customer_outcome: customerOutcome, scoringModel };
   }
   const messages = history.map(({ id, role, content }) => ({ id, role, content }));
   const report = await callModel('report', reportPrompt, { scenario, focus, messages }, checkedReport, 3800, options);
-  return { ...report, scoringModel };
+  return { ...report, customer_outcome: customerOutcome, scoringModel };
 };

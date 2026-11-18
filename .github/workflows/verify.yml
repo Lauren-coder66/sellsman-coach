@@ -1,0 +1,33 @@
+name: Verify
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AI_MODE: mock
+      DATABASE_URL: /tmp/sales-coach-ci.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node scripts/check-runtime.mjs
+      - run: npm audit --prefix deploy/runtime --omit=dev --audit-level=high
+      - run: npm run lint
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: npx tsc --noEmit --incremental false
+      - run: npm run build
+      - run: node scripts/production-smoke.mjs
+      - run: docker build -t sales-coach:ci .
+      - name: Container smoke
+        run: |
+          id="$(docker run -d --rm -p 127.0.0.1:3114:3000 -e AI_MODE=mock -e ACCOUNT_REQUIRED=0 sales-coach:ci)"
+          trap 'docker stop "$id" >/dev/null' EXIT
+          curl --retry 15 --retry-delay 1 --retry-all-errors --fail http://127.0.0.1:3114/api/health

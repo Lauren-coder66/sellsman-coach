@@ -1,0 +1,17 @@
+{$PUBLIC_DOMAIN} {
+	@voice path /api/sessions/*/voice
+	request_body @voice {
+		max_size 500KB
+	}
+	@other not path /api/sessions/*/voice
+	request_body @other {
+		max_size 64KB
+	}
+	encode zstd gzip
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+	}
+	reverse_proxy app:3000
+}

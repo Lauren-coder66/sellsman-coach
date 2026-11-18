@@ -79,7 +79,10 @@ function TrainContent() {
   return <main className="mx-auto flex h-dvh max-w-6xl flex-col p-4">
     <header className="flex items-center justify-between gap-3 border-b bg-white p-4">
       <div><Link href="/" className="text-sm text-teal-700">◈ 销售陪练</Link><h1 className="text-xl font-bold">{data?.session.scenario.product || '训练工作台'}</h1><p className="text-sm text-slate-500">{data?.session.scenario.identity} · {data?.session.scenario.personality} · {data?.session.scenario.difficulty} · {data?.session.status || '加载中'}</p></div>
-      <button onClick={finish} disabled={busy || !data || !['active', 'failed', 'finishing', 'completed'].includes(data.session.status)} className="rounded-lg border px-4 py-2 disabled:opacity-50">{finishLabel}</button>
+      <div className="flex flex-wrap items-center gap-2">
+        {data?.session.status === 'active' && <Link className="text-sm text-teal-700 underline" href={`/train/${id}/voice`}>语音练习</Link>}
+        <button onClick={finish} disabled={busy || !data || !['active', 'failed', 'finishing', 'completed'].includes(data.session.status)} className="rounded-lg border px-4 py-2 disabled:opacity-50">{finishLabel}</button>
+      </div>
     </header>
     <p className="bg-amber-50 px-4 py-2 text-sm text-amber-900">{data?.session.aiMode === 'real' ? '真实 AI 客户对练。' : '演示模式：当前客户回复由本地规则模拟，并非真实 AI。'} · {turns}/30 轮</p>
     {data?.session.focus && <p className="bg-teal-50 px-4 py-3 text-sm text-teal-900"><b>本次训练重点：{focusDetails[data.session.focus.dimension].label}</b> · {focusDetails[data.session.focus.dimension].instruction}</p>}

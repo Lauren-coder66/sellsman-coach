@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { ScenarioFields } from '@/components/scenario-fields';
 import { templates } from '@/lib/templates';
 import { api } from '@/lib/client';
@@ -23,6 +23,7 @@ function Form() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [aiMode, setAiMode] = useState<'mock' | 'real' | null>(null);
+  const creation = useRef<{ requestId: string; body: string } | null>(null);
   const savedId = params.get('scenario');
   const sessionId = params.get('from');
   const sourceKey = savedId ? `scenario:${savedId}` : sessionId ? `session:${sessionId}` : null;
@@ -55,7 +56,11 @@ function Form() {
     setError('');
     try {
       const payload = focus && sourceSessionId ? { ...scenario, sourceSessionId, focusDimension: focus } : scenario;
-      const created = await api<{ id: string }>('/api/sessions', { method: 'POST', body: JSON.stringify(payload) });
+      const body = JSON.stringify(payload);
+      const requestId = creation.current?.body === body ? creation.current.requestId : crypto.randomUUID();
+      creation.current = { requestId, body };
+      const created = await api<{ id: string }>('/api/sessions', { method: 'POST', body: JSON.stringify({ ...payload, requestId }) });
+      creation.current = null;
       router.push(`/train/${created.id}`);
     } catch (cause) { setError((cause as Error).message); }
     finally { setBusy(false); }
@@ -83,7 +88,7 @@ function Form() {
   }
 
   return <main className="mx-auto max-w-5xl p-6 md:p-10">
-    <header className="flex justify-between"><Link href="/" className="font-bold text-teal-800">◈ 销售陪练</Link><nav className="flex gap-4"><Link href="/scenarios">我的场景</Link><Link href="/history">历史训练</Link></nav></header>
+    <header className="flex flex-wrap justify-between gap-3"><Link href="/" className="font-bold text-teal-800">◈ 销售陪练</Link><nav className="flex flex-wrap gap-4"><Link href="/scenarios">我的场景</Link><Link href="/history">历史训练</Link><Link href="/account">账号</Link></nav></header>
     <h1 className="mt-12 text-4xl font-bold">创建训练场景</h1>
     <p className="mt-3 text-slate-600">先选择模板，或填写自己的产品与客户。每次训练都会新建会话。</p>
     {aiMode && <p className="mt-3 text-sm text-amber-800">{aiMode === 'real' ? '真实 AI 模式：客户回复和训练报告由已配置的模型生成。' : '演示模式：当前客户由本地规则模拟，并非真实 AI。'}</p>}

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 
 export const trainingSessions = sqliteTable('training_sessions', {
   id: text('id').primaryKey(),
@@ -46,3 +46,46 @@ export const trainingFocus = sqliteTable('training_focus', {
   dimension: text('dimension', { enum: ['need_discovery', 'value_expression', 'objection_handling', 'next_step'] }).notNull(),
   createdAt: integer('created_at').notNull(),
 }, table => [index('training_focus_source_idx').on(table.sourceSessionId)]);
+
+export const aiUsage = sqliteTable('ai_usage', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  model: text('model').notNull(),
+  provider: text('provider').notNull(),
+  operation: text('operation').notNull(),
+  startedAt: integer('started_at').notNull(),
+  completedAt: integer('completed_at'),
+  reservedTokens: integer('reserved_tokens').notNull(),
+  tokens: integer('tokens'),
+  promptTokens: integer('prompt_tokens'),
+  completionTokens: integer('completion_tokens'),
+  cost: real('cost'),
+  outcome: text('outcome'),
+}, table => [index('ai_usage_owner_time_idx').on(table.ownerId, table.startedAt), index('ai_usage_time_idx').on(table.startedAt)]);
+
+export const subscriptions = sqliteTable('subscriptions', {
+  ownerId: text('owner_id').primaryKey(),
+  plan: text('plan', { enum: ['standard', 'premium'] }).notNull(),
+  state: text('state', { enum: ['active', 'cancelled', 'expired'] }).notNull(),
+  validUntil: integer('valid_until').notNull(),
+});
+
+export const billingOrders = sqliteTable('billing_orders', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  plan: text('plan', { enum: ['standard', 'premium'] }).notNull(),
+  state: text('state', { enum: ['pending', 'paid', 'cancelled', 'refunded'] }).notNull(),
+  provider: text('provider').notNull(),
+  externalId: text('external_id').notNull(),
+  createdAt: integer('created_at').notNull(),
+}, table => [uniqueIndex('billing_order_external_idx').on(table.provider, table.externalId)]);
+
+export const voiceAttempts = sqliteTable('voice_attempts', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  sessionId: text('session_id').notNull().references(() => trainingSessions.id, { onDelete: 'cascade' }),
+  startedAt: integer('started_at').notNull(),
+  seconds: integer('seconds').notNull(),
+  transcript: text('transcript'),
+  endedAt: integer('ended_at'),
+}, table => [index('voice_attempts_owner_time_idx').on(table.ownerId, table.startedAt)]);
