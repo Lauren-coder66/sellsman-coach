@@ -3,7 +3,7 @@ name: Linux diagnostic
 on:
   push:
     branches:
-      - 'diagnostics/**'
+      - 'diagnostic/**'
   workflow_dispatch:
 
 permissions:
