@@ -18,6 +18,7 @@ export type CustomerProfile = {
 };
 export type TrainingFocusContext = { dimension: FocusDimension; instruction: string };
 export interface AIProvider {
+  generateCustomerSetup?(scenario: Scenario, focus?: TrainingFocusContext): Promise<{ profile: CustomerProfile; opening: string }>;
   generateCustomerProfile(scenario: Scenario, focus?: TrainingFocusContext): Promise<CustomerProfile>;
   generateCustomerOpening(scenario: Scenario, profile: CustomerProfile, focus?: TrainingFocusContext): Promise<string>;
   generateCustomerReply(scenario: Scenario, profile: CustomerProfile, messages: ConversationMessage[], focus?: TrainingFocusContext): Promise<string>;

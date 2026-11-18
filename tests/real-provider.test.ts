@@ -51,7 +51,7 @@ test('real provider sends hidden profile and full conversation only to the confi
   const request = JSON.parse(init.body as string);
   expect(request.model).toBe('test-model');
   expect(request.response_format).toEqual({ type: 'json_object' });
-  expect(fetcher.mock.calls.map(([, options]) => JSON.parse((options as RequestInit).body as string).max_tokens)).toEqual([1400, 650, 1200]);
+  expect(fetcher.mock.calls.map(([, options]) => JSON.parse((options as RequestInit).body as string).max_tokens)).toEqual([1400, 1050, 1200]);
   const input = JSON.parse(request.messages[1].content);
   expect(input.profile).toEqual(created);
   expect(input.history).toEqual(history.map(({ role, content }) => ({ role, content })));
@@ -94,9 +94,43 @@ test('a truncated or incomplete profile is rejected and a known timeout maps to 
 });
 
 test('upstream gateway timeout is returned as an AI timeout', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('gateway timeout', { status: 504 })));
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(new Response('gateway timeout', { status: 504 }))
+    .mockResolvedValueOnce(Response.json({ error: { code: 504, message: 'raw provider detail' } })));
+  await expect(realProvider.generateCustomerProfile(scenario)).rejects.toBeInstanceOf(AIRequestTimeoutError);
   await expect(realProvider.generateCustomerProfile(scenario)).rejects.toBeInstanceOf(AIRequestTimeoutError);
   expect(vi.mocked(console.info).mock.calls.flat().join(' ')).toContain('"outcome":"timeout"');
+  expect(vi.mocked(console.info).mock.calls.flat().join(' ')).not.toContain('raw provider detail');
+});
+
+test('combined setup validates both outputs and retries invalid JSON once under the same deadline', async () => {
+  const invalid = () => Response.json({ choices: [{ message: { content: 'not json' } }] });
+  const { mode, ...hidden } = profile;
+  const opening = '你好，你们能做展示型网站吗？';
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(invalid())
+    .mockResolvedValueOnce(modelResponse({ profile: hidden, opening }))
+    .mockResolvedValueOnce(modelResponse({ profile: { ...hidden, extra: 'unexpected' }, opening }))
+    .mockResolvedValueOnce(invalid())
+    .mockResolvedValueOnce(invalid());
+  vi.stubGlobal('fetch', fetcher);
+  await expect(realProvider.generateCustomerSetup!(scenario)).resolves.toEqual({ profile: { ...hidden, mode }, opening });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(fetcher.mock.calls[0][1].signal).toBe(fetcher.mock.calls[1][1].signal);
+  await expect(realProvider.generateCustomerSetup!(scenario)).rejects.toThrow('不符合预期格式');
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  await expect(realProvider.generateCustomerSetup!(scenario)).rejects.toThrow('无效的 JSON');
+  expect(fetcher).toHaveBeenCalledTimes(5);
+});
+
+test('a reply with the wrong JSON fields gets one correction attempt', async () => {
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(modelResponse({ message: '错误的字段名' }))
+    .mockResolvedValueOnce(modelResponse({ reply: '可以先看交付清单吗？' }));
+  vi.stubGlobal('fetch', fetcher);
+  await expect(realProvider.generateCustomerReply(scenario, profile, [])).resolves.toBe('可以先看交付清单吗？');
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(fetcher.mock.calls[0][1].signal).toBe(fetcher.mock.calls[1][1].signal);
 });
 
 test('timeout is shorter than the session lease and aborts the request', async () => {

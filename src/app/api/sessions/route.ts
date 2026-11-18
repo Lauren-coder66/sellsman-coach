@@ -22,8 +22,11 @@ export async function POST(request: NextRequest) {
     if (sourceSessionId && !db.select({id:trainingSessions.id}).from(trainingSessions).where(and(eq(trainingSessions.id,sourceSessionId),eq(trainingSessions.ownerId,ownerId))).get()) return failure('NOT_FOUND','来源训练不存在',404);
     const focus = focusDimension ? {dimension:focusDimension,instruction:focusDetails[focusDimension].instruction} : undefined;
     const provider = getAIProvider();
-    const profile = await provider.generateCustomerProfile(scenario, focus);
-    const opening = await provider.generateCustomerOpening(scenario, profile, focus);
+    const setup = provider.generateCustomerSetup && process.env.AI_CREATE_STRATEGY === 'combined'
+      ? await provider.generateCustomerSetup(scenario, focus)
+      : null;
+    const profile = setup?.profile ?? await provider.generateCustomerProfile(scenario, focus);
+    const opening = setup?.opening ?? await provider.generateCustomerOpening(scenario, profile, focus);
     const id = randomUUID();
     const now = Date.now();
     const created = db.transaction(tx => {
