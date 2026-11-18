@@ -19,7 +19,7 @@ const owned = (id: string, ownerId: string) => and(eq(trainingSessions.id, id), 
 const lease = (session: Session) => and(owned(session.id, session.ownerId), eq(trainingSessions.status, session.status), eq(trainingSessions.updatedAt, session.updatedAt));
 const nextStamp = (session: Session) => Math.max(Date.now(), session.updatedAt + 1);
 const diagnostic = (event: string, details: Record<string, unknown>) => {
-  if (process.env.E2E_TEST === '1') console.log(JSON.stringify({ diagnostic: event, ...details }));
+  if (process.env.E2E_TEST === '1') console.error(JSON.stringify({ diagnostic: event, ...details }));
 };
 const focusFor = (id: string) => {
   const row = db.select().from(trainingFocus).where(eq(trainingFocus.sessionId, id)).get();

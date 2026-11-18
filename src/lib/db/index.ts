@@ -10,7 +10,7 @@ fs.mkdirSync(path.dirname(file), { recursive: true });
 
 function diagnostic(event: string, details: Record<string, unknown>) {
   if (process.env.E2E_TEST !== '1') return;
-  console.log(JSON.stringify({ diagnostic: event, ...details }));
+  console.error(JSON.stringify({ diagnostic: event, ...details }));
 }
 
 function connect() {
