@@ -15,24 +15,30 @@
 
 ## Linux 结果
 
-待执行。需要记录 Run ID、Job ID、每轮退出码、测试总数、失败用例及 artifact 地址。
+最终 Linux full E2E Run：[44348096616](https://github.com/Lauren-coder66/sellsman-coach/actions/runs/44348096616)，Job `134955922204`，提交 `f861a3d4da9ea574b7412cd0cbaa96183c689d4a`，结果成功。
+
+三轮完整 E2E 均使用 workers=2，每轮执行 12 个测试，全部通过，共 36/36 通过：
 
 | 轮次 | 退出码 | 通过/失败 | 数据库身份 | SQLite 计数 | 事务日志 | Artifact |
 |---|---:|---|---|---|---|---|
-| 1 | 待填 | 待填 | 待填 | 待填 | 待填 | 待填 |
-| 2 | 待填 | 待填 | 待填 | 待填 | 待填 | 待填 |
-| 3 | 待填 | 待填 | 待填 | 待填 | 待填 | 待填 |
+| 1 | 0 | 12/12 通过 | `/tmp/sales-coach-e2e-full-1/test.sqlite` | 未发生 customer count 异常 | 未发生失败事务 | [full artifact](https://github.com/Lauren-coder66/sellsman-coach/actions/runs/44348096616/artifacts/14446214703) |
+| 2 | 0 | 12/12 通过 | `/tmp/sales-coach-e2e-full-2/test.sqlite` | 未发生 customer count 异常 | 未发生失败事务 | [full artifact](https://github.com/Lauren-coder66/sellsman-coach/actions/runs/44348096616/artifacts/14446214703) |
+| 3 | 0 | 12/12 通过 | `/tmp/sales-coach-e2e-full-3/test.sqlite` | 未发生 customer count 异常 | 未发生失败事务 | [full artifact](https://github.com/Lauren-coder66/sellsman-coach/actions/runs/44348096616/artifacts/14446214703) |
+
+对应 Verify Run：[44348096346](https://github.com/Lauren-coder66/sellsman-coach/actions/runs/44348096346)，Job `134955913836`，结果成功。Vitest 为 51/51，Playwright 为 12/12；TypeScript、ESLint、production build、Docker build、Compose 健康检查、迁移、备份恢复和容器重启均通过。容器 artifact：[linux-container-smoke](https://github.com/Lauren-coder66/sellsman-coach/actions/runs/44348096346/artifacts/14447701418)。
 
 ## 根因判断
 
-待完整 E2E 三轮结果。重点回答：
+完整 E2E 三轮未复现原始 customer count 由 2 变 1 的故障。重点结论：
 
-1. 完整 E2E 是否稳定复现 customer count 由 2 变 1。
-2. `workers=2` 是否引入异常。
-3. 测试之间是否共享或污染 SQLite 文件。
-4. 是否存在 SQLite 并发读写问题。
-5. 异常发生在 POST、GET、事务提交还是测试查询阶段。
-6. 是否有证据支持修改业务逻辑。
+1. 完整 E2E 三轮均通过，未复现 customer count 异常。
+2. `workers=2` 未引入可观察异常。
+3. 三轮使用独立 SQLite 路径，未发现测试之间的数据干扰。
+4. 未发现 SQLite 并发读写错误。
+5. 本次没有异常环节可定位。
+6. 没有证据支持修改业务逻辑。
+
+旧的 `linux-diagnostic.yml` 未因本次分支推送触发；本次仅触发了 Verify 和 Linux full E2E diagnostic。
 
 ## 当前已知基线
 
