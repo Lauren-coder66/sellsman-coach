@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { getAIProvider } from '../src/lib/ai';
 import { realProvider } from '../src/lib/ai/real-provider';
+import { mockProvider } from '../src/lib/ai/mock-provider';
 import { AIModelOutputError, AIRequestTimeoutError } from '../src/lib/ai/service';
 import { handleError } from '../src/lib/api';
 import type { ConversationMessage, Scenario } from '../src/lib/ai/provider';
@@ -133,6 +134,21 @@ test('a reply with the wrong JSON fields gets one correction attempt', async () 
   expect(fetcher.mock.calls[0][1].signal).toBe(fetcher.mock.calls[1][1].signal);
 });
 
+test('a verbatim repetition of the previous customer turn is retried once', async () => {
+  const previous = '先把清单给我看看。';
+  const response = vi.fn()
+    .mockResolvedValueOnce(modelResponse({ reply: previous }))
+    .mockResolvedValueOnce(modelResponse({ reply: '可以，下周一一起核对清单。' }));
+  vi.stubGlobal('fetch', response);
+  const messages: ConversationMessage[] = [
+    { id: 'c1', sequence: 0, role: 'customer', content: previous },
+    { id: 's1', sequence: 1, role: 'user', content: '清单已准备好，下周一有空吗？' },
+  ];
+  await expect(realProvider.generateCustomerReply(scenario, profile, messages)).resolves.toBe('可以，下周一一起核对清单。');
+  expect(response).toHaveBeenCalledTimes(2);
+  expect(response.mock.calls[0][1].signal).toBe(response.mock.calls[1][1].signal);
+});
+
 test('timeout is shorter than the session lease and aborts the request', async () => {
   process.env.AI_TIMEOUT_MS = '60000';
   await expect(realProvider.generateCustomerOpening(scenario, profile)).rejects.toThrow('45000');
@@ -166,4 +182,28 @@ test('Bailian uses non-thinking JSON mode and the configured Beijing endpoint', 
   process.env.AI_API_URL = 'https://example.com/chat/completions';
   await expect(realProvider.generateCustomerOpening(scenario, profile)).rejects.toThrow('华北2');
   expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+test('Bailian report resolves only allowed seller evidence references to exact text', async () => {
+  process.env.AI_PROVIDER = 'bailian';
+  process.env.AI_MODEL = 'qwen3.7-flash';
+  process.env.AI_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+  const history: ConversationMessage[] = [
+    { id: 'buyer', role: 'customer', content: '预算是多少？', sequence: 0 },
+    { id: 'seller', role: 'user', content: '我先了解您的预算，再讨论方案。', sequence: 1 },
+  ];
+  const report = await mockProvider.generateTrainingReport(scenario, history);
+  const { message_id: messageId, quote, ...issue } = report.issues[0];
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(modelResponse({ ...report, issues: [{ ...issue, evidence_ref: 'S99' }] }))
+    .mockResolvedValueOnce(modelResponse({ ...report, issues: [{ ...issue, evidence_ref: 'S1' }] }));
+  vi.stubGlobal('fetch', fetcher);
+  expect((await realProvider.generateTrainingReport(scenario, history)).issues).toEqual([{ ...issue, message_id: messageId, quote }]);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  const request = JSON.parse(fetcher.mock.calls[0][1].body);
+  expect(request.max_tokens).toBe(1400);
+  expect(JSON.parse(request.messages[1].content).messages).toEqual([
+    { role: 'customer', content: history[0].content },
+    { role: 'user', content: history[1].content, evidence_ref: 'S1', quote_candidate: quote },
+  ]);
 });

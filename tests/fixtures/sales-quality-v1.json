@@ -1,0 +1,345 @@
+{
+  "version": "sales-quality-v1",
+  "cases": [
+    {
+      "id": "A",
+      "dialogue": [
+        {
+          "role": "customer",
+          "content": "我们想重做官网，询盘少，但公司今年的支出要经过财务审批。"
+        },
+        {
+          "role": "user",
+          "content": "现在最想改善的是什么？如果只能先解决一个问题，您会选搜索曝光还是让访客更容易询价？"
+        },
+        {
+          "role": "customer",
+          "content": "访客有，但多数找不到询价入口。我们也没技术同事维护。"
+        },
+        {
+          "role": "user",
+          "content": "我确认一下：首要是让已有访客找到询价入口，其次是减少维护负担，对吗？每周大概有多少访客找不到入口？"
+        },
+        {
+          "role": "customer",
+          "content": "对。我们没有统计，财务担心花费后也看不出变化。"
+        },
+        {
+          "role": "user",
+          "content": "首期可以把询价按钮放到产品页，先记录提交次数作为基线。交付时您可以自己提交测试询盘，确认邮件到账；我们不承诺询盘一定增长。"
+        },
+        {
+          "role": "customer",
+          "content": "这个可以验证，但维护费能不能提前写清楚？"
+        },
+        {
+          "role": "user",
+          "content": "理解您担心追加支出。我们会把一次性建站、维护和可选项目分开列，新增服务须书面确认。您看这能满足财务的要求吗？"
+        },
+        {
+          "role": "customer",
+          "content": "分开列就方便审批，但我需要先看清单，自己不能签。"
+        },
+        {
+          "role": "user",
+          "content": "我周四发范围、维护和验收清单。周五上午十点由我和您、财务视频核对二十分钟，核对通过后再谈正式报价，可以吗？"
+        },
+        {
+          "role": "customer",
+          "content": "可以，周五十点一起看。能否采购要等财务审批。"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "dialogue": [
+        {
+          "role": "customer",
+          "content": "我们想重做官网，询盘少，但公司今年的支出要经过财务审批。"
+        },
+        {
+          "role": "user",
+          "content": "我们提供响应式网页，电脑和平板都能访问。"
+        },
+        {
+          "role": "customer",
+          "content": "询价入口可以放在哪？我们也没技术同事。"
+        },
+        {
+          "role": "user",
+          "content": "产品有后台管理、图片轮播和多种主题，也支持产品目录和联系表单。"
+        },
+        {
+          "role": "customer",
+          "content": "财务担心投入有风险。能提前确认维护费用吗？"
+        },
+        {
+          "role": "user",
+          "content": "维护服务包含备份和漏洞更新，上线也有专人协助。"
+        },
+        {
+          "role": "customer",
+          "content": "那我暂时没法向财务说明费用和上线效果。"
+        },
+        {
+          "role": "user",
+          "content": "另外还有搜索设置、多语言和新闻发布功能。有需要的话我们可以再聊。"
+        },
+        {
+          "role": "customer",
+          "content": "我先看看介绍，费用还没法评估。"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "dialogue": [
+        {
+          "role": "customer",
+          "content": "我们想重做官网，询盘少，但公司今年的支出要经过财务审批。"
+        },
+        {
+          "role": "user",
+          "content": "这些都先不用问，直接签合同，详情以后再说。"
+        },
+        {
+          "role": "customer",
+          "content": "没有财务批准我不能签。询价入口和维护责任是怎么安排的？"
+        },
+        {
+          "role": "user",
+          "content": "别再纠结这些，别人都能签。您先付钱占名额。"
+        },
+        {
+          "role": "customer",
+          "content": "我明确没有这个权限，也还没看到方案。"
+        },
+        {
+          "role": "user",
+          "content": "我保证一定有效，今天就定下来，不要拿审批当借口。"
+        },
+        {
+          "role": "customer",
+          "content": "我不同意，也不考虑按这种方式合作。"
+        },
+        {
+          "role": "user",
+          "content": "把合同签了，我们才继续回答你的问题。"
+        },
+        {
+          "role": "customer",
+          "content": "我拒绝签约，也不想继续沟通。"
+        }
+      ]
+    },
+    {
+      "id": "no_demand",
+      "dialogue": [
+        {
+          "role": "customer",
+          "content": "我们今年不打算建网站，也没有获客目标。"
+        },
+        {
+          "role": "user",
+          "content": "明白。现有转介绍能满足订单目标吗？"
+        },
+        {
+          "role": "customer",
+          "content": "完全可以，今年没有新增获客需求。"
+        },
+        {
+          "role": "user",
+          "content": "那现在没有必要建设。我可以把评估清单发给您留用吗？"
+        },
+        {
+          "role": "customer",
+          "content": "不用，暂时也不希望收到材料。"
+        },
+        {
+          "role": "user",
+          "content": "了解，我尊重您的选择，结束联系。"
+        }
+      ]
+    },
+    {
+      "id": "resolved",
+      "dialogue": [
+        {
+          "role": "customer",
+          "content": "我们最担心的是后续维护责任。"
+        },
+        {
+          "role": "user",
+          "content": "产品内容由您负责更新，我们负责备份和安全修复；您希望补充哪一项？"
+        },
+        {
+          "role": "customer",
+          "content": "这就解释清楚了。我现在想看看验收流程。"
+        },
+        {
+          "role": "user",
+          "content": "我们现场测试询盘邮件是否送达，并由您确认记录。"
+        },
+        {
+          "role": "customer",
+          "content": "可以，把流程发我看看。"
+        },
+        {
+          "role": "user",
+          "content": "今天下班前我发给您和技术同事，明早收集反馈。"
+        }
+      ]
+    },
+    {
+      "id": "short",
+      "dialogue": [
+        {
+          "role": "customer",
+          "content": "多少钱？"
+        },
+        {
+          "role": "user",
+          "content": "要先确认范围。"
+        },
+        {
+          "role": "customer",
+          "content": "那稍后再聊。"
+        },
+        {
+          "role": "user",
+          "content": "好。"
+        }
+      ]
+    },
+    {
+      "id": "long",
+      "dialogue": [
+        {
+          "role": "customer",
+          "content": "第1项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第1项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第2项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第2项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第3项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第3项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第4项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第4项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第5项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第5项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第6项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第6项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第7项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第7项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第8项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第8项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第9项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第9项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第10项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第10项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第11项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第11项的责任人和验收条件写进清单。"
+        },
+        {
+          "role": "customer",
+          "content": "第12项由不同部门审批"
+        },
+        {
+          "role": "user",
+          "content": "我会把第12项的责任人和验收条件写进清单。"
+        }
+      ]
+    },
+    {
+      "id": "quote_trap",
+      "dialogue": [
+        {
+          "role": "customer",
+          "content": "我从没说过首付款必须五万。"
+        },
+        {
+          "role": "user",
+          "content": "首付款：待双方确认。"
+        },
+        {
+          "role": "customer",
+          "content": "麻烦把标点和金额要求写清。"
+        },
+        {
+          "role": "user",
+          "content": "我没有承诺“首付款五万”。"
+        },
+        {
+          "role": "customer",
+          "content": "那先讨论维护。"
+        },
+        {
+          "role": "user",
+          "content": "维护范围暂未确认。"
+        }
+      ]
+    }
+  ]
+}
