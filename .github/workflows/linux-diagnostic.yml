@@ -35,7 +35,7 @@ jobs:
           failed=0
           for run in 1 2 3 4 5; do
             echo "=== diagnostic run $run ===" | tee -a verify-evidence/pending-reply.log
-            db_dir="$RUNNER_TEMP/sales-coach-e2e-$run"
+            db_dir="/tmp/sales-coach-e2e-$run"
             mkdir -p "$db_dir"
             if ! SALES_COACH_E2E_DB="$db_dir/test.sqlite" npx playwright test e2e/api-stability.spec.ts -g "recovers a persisted pending reply" --workers=1 2>&1 | tee -a verify-evidence/pending-reply.log; then
               failed=1
