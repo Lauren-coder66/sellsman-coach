@@ -22,6 +22,7 @@ function Form() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [aiMode, setAiMode] = useState<'mock' | 'real' | null>(null);
   const savedId = params.get('scenario');
   const sessionId = params.get('from');
   const sourceKey = savedId ? `scenario:${savedId}` : sessionId ? `session:${sessionId}` : null;
@@ -34,6 +35,7 @@ function Form() {
 
   useEffect(() => {
     api<{ items: SavedItem[] }>('/api/scenarios').then(data => setPersonal(data.items)).catch(cause => setError((cause as Error).message));
+    api<{ mode: 'mock' | 'real' }>('/api/ai-mode').then(data => setAiMode(data.mode)).catch(cause => setError((cause as Error).message));
   }, []);
   useEffect(() => {
     let current = true;
@@ -84,7 +86,7 @@ function Form() {
     <header className="flex justify-between"><Link href="/" className="font-bold text-teal-800">◈ 销售陪练</Link><nav className="flex gap-4"><Link href="/scenarios">我的场景</Link><Link href="/history">历史训练</Link></nav></header>
     <h1 className="mt-12 text-4xl font-bold">创建训练场景</h1>
     <p className="mt-3 text-slate-600">先选择模板，或填写自己的产品与客户。每次训练都会新建会话。</p>
-    <p className="mt-3 text-sm text-amber-800">演示模式：当前客户由本地规则模拟，并非真实 AI。</p>
+    {aiMode && <p className="mt-3 text-sm text-amber-800">{aiMode === 'real' ? '真实 AI 模式：客户由已配置的模型扮演；结束后的报告评分仍由 Mock 规则生成。' : '演示模式：当前客户由本地规则模拟，并非真实 AI。'}</p>}
     {sourceLoading && <p role="status" className="mt-4 text-slate-600">正在载入训练场景…</p>}
     {focus && <div className="mt-6 rounded-xl border border-teal-200 bg-teal-50 p-5"><p className="font-bold text-teal-900">本次专项训练重点：{focusDetails[focus].label}</p><p className="mt-2 text-teal-800">{focusDetails[focus].instruction}</p></div>}
     <section className="mt-8"><h2 className="text-xl font-bold">系统模板</h2><div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">{templates.map(template => <button type="button" key={template.title} disabled={sourceLoading} onClick={() => choose({ name: template.title, scenario: template.scenario })} className="rounded-xl border bg-white p-3 text-left hover:border-teal-600 disabled:opacity-50">{template.title}</button>)}</div></section>

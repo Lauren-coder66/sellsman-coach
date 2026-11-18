@@ -20,6 +20,7 @@ export async function GET(_request: NextRequest, { params }: Context) {
         id,
         scenario: JSON.parse(session.scenarioJson),
         status: session.status,
+        aiMode: (JSON.parse(session.customerProfileJson) as { mode?: string }).mode === 'real' ? 'real' : 'mock',
         focus: focus ? { dimension: focus.dimension, sourceSessionId: focus.sourceSessionId, sourceAvailable } : null,
       },
       messages: rows,

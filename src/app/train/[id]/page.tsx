@@ -8,7 +8,7 @@ import type { Scenario } from '@/lib/ai/provider';
 import { focusDetails, type FocusDimension } from '@/lib/focus';
 
 type Msg = { id: string; role: 'user' | 'customer'; content: string; sequence: number; createdAt: number };
-type Data = { session: { id: string; scenario: Scenario; status: string; focus: { dimension: FocusDimension; sourceSessionId: string; sourceAvailable: boolean } | null }; messages: Msg[] };
+type Data = { session: { id: string; scenario: Scenario; status: string; aiMode: 'mock' | 'real'; focus: { dimension: FocusDimension; sourceSessionId: string; sourceAvailable: boolean } | null }; messages: Msg[] };
 
 function TrainContent() {
   const { id } = useParams<{ id: string }>();
@@ -81,7 +81,7 @@ function TrainContent() {
       <div><Link href="/" className="text-sm text-teal-700">◈ 销售陪练</Link><h1 className="text-xl font-bold">{data?.session.scenario.product || '训练工作台'}</h1><p className="text-sm text-slate-500">{data?.session.scenario.identity} · {data?.session.scenario.personality} · {data?.session.scenario.difficulty} · {data?.session.status || '加载中'}</p></div>
       <button onClick={finish} disabled={busy || !data || !['active', 'failed', 'finishing', 'completed'].includes(data.session.status)} className="rounded-lg border px-4 py-2 disabled:opacity-50">{finishLabel}</button>
     </header>
-    <p className="bg-amber-50 px-4 py-2 text-sm text-amber-900">演示模式：当前客户回复由本地规则模拟，并非真实 AI。 · {turns}/30 轮</p>
+    <p className="bg-amber-50 px-4 py-2 text-sm text-amber-900">{data?.session.aiMode === 'real' ? '真实 AI 客户对练；报告评分仍为 Mock 演示。' : '演示模式：当前客户回复由本地规则模拟，并非真实 AI。'} · {turns}/30 轮</p>
     {data?.session.focus && <p className="bg-teal-50 px-4 py-3 text-sm text-teal-900"><b>本次训练重点：{focusDetails[data.session.focus.dimension].label}</b> · {focusDetails[data.session.focus.dimension].instruction}</p>}
     <section className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-100 p-4">
       {loading && <p>正在恢复对话…</p>}

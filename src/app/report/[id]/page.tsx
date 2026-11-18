@@ -32,7 +32,7 @@ function ReportContent() {
   return <main className="mx-auto max-w-5xl p-6 md:p-10">
     <header className="flex justify-between"><Link href="/" className="font-bold text-teal-800">◈ 销售陪练</Link><Link href="/history">训练历史</Link></header>
     <h1 className="mt-10 text-4xl font-bold">训练复盘</h1>
-    <p className="mt-3 text-sm text-amber-800">演示报告：评分由本地规则生成，尚未接入真实 AI。</p>
+    <p className="mt-3 text-sm text-amber-800">演示报告：评分由本地规则生成，不属于真实 AI 评估。</p>
     {error && <p role="alert" className="mt-6 text-red-700">{error}</p>}
     {!report && !error && <p className="mt-8">正在加载报告…</p>}
     {report && <>

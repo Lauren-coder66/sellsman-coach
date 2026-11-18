@@ -5,7 +5,8 @@ import { messages, trainingFocus, trainingReports, trainingSessions } from '@/li
 import { getAIProvider } from '@/lib/ai';
 import { focusDetails } from '@/lib/focus';
 import { reportSchema } from '@/lib/validation';
-import type { AIProvider, Report } from '@/lib/ai/provider';
+import type { AIProvider, CustomerProfile, Report } from '@/lib/ai/provider';
+import { AIRequestTimeoutError } from '@/lib/ai/service';
 
 type Problem = { ok: false; code: string; message: string; status: number };
 type Result<T> = { ok: true; data: T } | Problem;
@@ -20,7 +21,7 @@ const focusFor = (id: string) => {
   return row ? { dimension: row.dimension, instruction: focusDetails[row.dimension].instruction } : undefined;
 };
 
-export async function sendMessage(id: string, ownerId: string, content: string, requestId: string, provider: AIProvider = getAIProvider()): Promise<Result<{ reply: string; alreadySaved: boolean }>> {
+export async function sendMessage(id: string, ownerId: string, content: string, requestId: string, provider?: AIProvider): Promise<Result<{ reply: string; alreadySaved: boolean }>> {
   const claimed = db.transaction(tx => {
     const session = tx.select().from(trainingSessions).where(owned(id, ownerId)).get();
     if (!session) return problem('NOT_FOUND', '会话不存在', 404);
@@ -46,7 +47,8 @@ export async function sendMessage(id: string, ownerId: string, content: string, 
   if (!claimed.ok) return claimed;
   if (claimed.data) return { ok: true, data: claimed.data };
   try {
-    const reply = await provider.generateCustomerReply(JSON.parse(claimed.session.scenarioJson), JSON.parse(claimed.session.customerProfileJson), claimed.history, focusFor(id));
+    const profile = JSON.parse(claimed.session.customerProfileJson) as CustomerProfile;
+    const reply = await (provider ?? getAIProvider(profile.mode ?? 'mock')).generateCustomerReply(JSON.parse(claimed.session.scenarioJson), profile, claimed.history, focusFor(id));
     if (!reply.trim()) throw new Error('客户回复为空');
     return db.transaction(tx => {
       const changed = tx.update(trainingSessions).set({ status: 'active', updatedAt: Date.now() }).where(and(owned(id, ownerId), eq(trainingSessions.status, 'replying'), eq(trainingSessions.updatedAt, claimed.stamp))).run();
@@ -56,6 +58,7 @@ export async function sendMessage(id: string, ownerId: string, content: string, 
     });
   } catch (error) {
     db.update(trainingSessions).set({ status: 'active', updatedAt: Date.now() }).where(and(owned(id, ownerId), eq(trainingSessions.status, 'replying'), eq(trainingSessions.updatedAt, claimed.stamp))).run();
+    if (error instanceof AIRequestTimeoutError) return problem('AI_TIMEOUT', error.message, 504);
     return problem('CUSTOMER_REPLY_ERROR', error instanceof Error ? error.message : '客户回复失败', 502);
   }
 }

@@ -11,6 +11,7 @@ const database = inheritedDatabase ?? path.join(mkdtempSync(path.join(tmpdir(), 
 process.env.SALES_COACH_E2E_DB = database;
 export default defineConfig({
   testDir: './e2e',
+  workers: 2,
   use: { baseURL: 'http://localhost:3101', launchOptions: { executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe' } },
   webServer: {
     command: 'npm run dev -- --port 3101',

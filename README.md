@@ -1,6 +1,6 @@
-# 销售陪练 Phase 1.4 · 演示版
+# 销售陪练 Phase 2.1 · 文字客户对练
 
-基于 Next.js、React、TypeScript、Tailwind、SQLite/Drizzle 的个人销售训练产品。当前仅实现 `AI_MODE=mock`，客户回复与报告评分由本地规则生成；页面均明确标为演示模式。无需 API Key。
+基于 Next.js、React、TypeScript、Tailwind、SQLite/Drizzle 的个人销售训练产品。`AI_MODE=mock` 使用本地规则；`AI_MODE=real` 使用服务端配置的 OpenAI 兼容 Chat Completions 接口生成客户画像与回复。两种模式的报告评分仍由本地 Mock 规则生成，不代表真实能力评估。
 
 ## Windows 启动
 
@@ -11,6 +11,14 @@ npm run dev
 ```
 
 打开 http://localhost:3000。页面：`/` 工作台、`/progress` 我的成长、`/create` 创建训练、`/scenarios` 管理个人场景、`/train/:id` 对话、`/report/:id` 报告、`/history` 历史。
+
+## 真实 AI 文字客户
+
+在 `.env.local` 中设置 `AI_MODE=real`、`AI_PROVIDER`（供应商标识）、`AI_API_URL`（供应商提供的完整 Chat Completions 地址）、`AI_MODEL` 和 `AI_API_KEY`，然后重启服务。可选 `AI_TIMEOUT_MS` 默认 30000，允许 1000–45000 毫秒；超过上限会拒绝配置，以保证请求超时短于 60 秒会话租约。创建训练会顺序调用画像和开场白，两次调用分别受此超时限制，因此整个创建请求可能超过该值。公开 HTTPS 地址才可用于生产；本机测试端点允许 HTTP。密钥只由服务端读取，不能设置为 `NEXT_PUBLIC_` 变量。供应商必须兼容 `POST` 请求中的 `model`、`messages`、`max_tokens`、`response_format: { type: "json_object" }` 和响应中的 `choices[0].message.content`；模型需按提示输出 JSON。画像、开场白和对话回复的输出上限分别为 1400、650 和 1200 Token；输出截断或结构不合格会返回 502，已识别的超时返回 504，不会用 Mock 回复代替。不同供应商的私有协议未适配。
+
+创建训练时，模型先生成仅存于 SQLite 的隐藏客户画像（身份、需求、预算、顾虑、购买意愿、决策条件），再生成客户开场白。后续每次回复都传入该画像、训练场景、专项重点和完整历史对话。接口不返回画像、提示词或密钥。每条新会话在画像中记录创建时的模式；切换默认模式后，已有会话仍沿用其原模式。真实模型失败会返回错误，已保存的用户发言可用同一个请求 ID 安全重试，不会回退为 Mock 客户。
+
+服务端对每次真实调用记录 `[ai-call]` 日志：操作、供应商、模型、成功或失败、耗时毫秒数和供应商返回的 Token 用量；未返回用量时记录 `null`。日志不记录密钥、画像、完整提示词或对话。若没有配置可用的真实 API Key，无法完成真实模型 10 轮验收，也无法报告实际 Token 消耗；单元测试中的模拟用量不代表真实消耗。
 
 ## 测试与构建
 
@@ -59,6 +67,6 @@ Vitest 每次使用独立的临时 SQLite 数据库。Playwright 会在 3101 端
 
 ## 当前限制
 
-- Mock 回复和评分仅供产品演示，不代表真实客户行为或销售能力评估。
-- 本版没有真实 AI Provider；`src/lib/ai/provider.ts` 定义了未来适配接口，`AI_MODE` 当前仅接受 `mock`。
+- Mock 回复和评分仅供产品演示，不代表真实客户行为或销售能力评估；真实客户回复也不等于真实能力评分。
+- 真实模式依赖所配置供应商的可用性、接口兼容性与费用；目前没有真实 AI 报告评分。
 - 匿名 Cookie 丢失后，原训练无法找回；本版没有账号恢复功能。

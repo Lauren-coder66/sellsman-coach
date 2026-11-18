@@ -3,7 +3,7 @@ import type { AIProvider, Report } from './provider';
 const has = (text: string, words: string[]) => words.some(word => text.includes(word));
 export const mockProvider: AIProvider = {
   async generateCustomerProfile(scenario) {
-    return { identity: scenario.identity, concern: scenario.personality === '价格敏感型' ? '预算' : scenario.personality === '怀疑型' ? '可信度' : '价值', stance: scenario.difficulty === '困难' ? -2 : 0 };
+    return { identity: scenario.identity, concern: scenario.personality === '价格敏感型' ? '预算' : scenario.personality === '怀疑型' ? '可信度' : '价值', stance: scenario.difficulty === '困难' ? -2 : 0, mode: 'mock' };
   },
   async generateCustomerOpening(scenario) {
     const line = scenario.personality === '冷淡型' ? '我时间有限，请直接说重点。' : scenario.personality === '价格敏感型' ? '先说一下大概费用吧。' : scenario.personality === '怀疑型' ? '你们有什么证据说明这能解决问题？' : scenario.personality === '强势型' ? '我需要一个明确理由，为什么要听这个方案？' : '你好，我想了解一下。';

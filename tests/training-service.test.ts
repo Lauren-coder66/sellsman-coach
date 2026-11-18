@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { mockProvider } from '../src/lib/ai/mock-provider';
+import { AIRequestTimeoutError } from '../src/lib/ai/service';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'sales-coach-unit-'));
 process.env.DATABASE_URL = path.join(directory, 'test.sqlite');
@@ -65,6 +66,16 @@ test('saved user message survives reply failure and retries with the same ID', a
   expect(session().status).toBe('active');
   expect(await sendMessage(id, ownerId, '另一条', randomUUID(), mockProvider)).toMatchObject({ ok: false, code: 'PENDING_REPLY' });
   expect((await sendMessage(id, ownerId, '我的问题', requestId, mockProvider)).ok).toBe(true);
+  expect(rows()).toHaveLength(3);
+});
+
+test('a timed out customer reply keeps the user message and returns 504', async () => {
+  const requestId = randomUUID();
+  const provider = { ...mockProvider, generateCustomerReply: vi.fn().mockRejectedValue(new AIRequestTimeoutError()) };
+  expect(await sendMessage(id, ownerId, '我的需求', requestId, provider)).toMatchObject({ ok: false, code: 'AI_TIMEOUT', status: 504 });
+  expect(rows().at(-1)).toMatchObject({ id: requestId, role: 'user' });
+  expect(session().status).toBe('active');
+  expect((await sendMessage(id, ownerId, '我的需求', requestId, mockProvider)).ok).toBe(true);
   expect(rows()).toHaveLength(3);
 });
 
