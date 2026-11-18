@@ -28,4 +28,15 @@ jobs:
       - run: node scripts/quota-smoke.mjs
       - run: docker build -t sales-coach:ci .
       - name: Container smoke
-        run: sh deploy/container-smoke.sh
+        run: |
+          set -o pipefail
+          mkdir -p verify-evidence
+          sh deploy/container-smoke.sh 2>&1 | tee verify-evidence/container-smoke.log
+      - name: Save verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-container-smoke-${{ github.sha }}
+          path: verify-evidence/container-smoke.log
+          if-no-files-found: ignore
+          retention-days: 14

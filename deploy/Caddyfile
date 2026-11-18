@@ -3,8 +3,8 @@
 		format filter {
 			wrap json
 			fields {
-				request>uri delete
-				request>headers delete
+				request delete
+				resp_headers delete
 			}
 		}
 	}
@@ -15,6 +15,18 @@ http://{$PUBLIC_DOMAIN} {
 }
 
 {$PUBLIC_DOMAIN} {
+	@nonapi not path /api/*
+	log_skip @nonapi
+	log {
+		format filter {
+			wrap json
+			fields {
+				request delete
+				resp_headers delete
+				user_id delete
+			}
+		}
+	}
 	@voice path /api/sessions/*/voice
 	request_body @voice {
 		max_size 500KB

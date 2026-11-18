@@ -72,3 +72,61 @@ curl -fsS https://sales.example.com/api/health
 ```
 
 每日从外部检查 HTTPS 健康、账号错误率、数据库卷可写及剩余磁盘空间、模型 429 和超时。运维提供商确认备份调度与失败告警，限制访问备份并定期演练异机恢复。验收界限及成本见[最终候选报告](RELEASE_REPORT.md)。
+
+## Linux 预发布门槛
+
+先在清空测试卷的独立 Linux 环境运行 Verify。当前工作流使用 Node 24、`npm ci`、类型检查、ESLint、Vitest、Playwright、正式构建和 Docker Compose 验收。GitHub 保留每步日志，另外上传 `linux-container-smoke-<SHA>` 记录容器验收结果。容器验收使用 Mock、私有 CA 和新卷，并检查迁移、非 root、卷读写边界、重启、重建及恢复。
+
+```sh
+npm ci
+npm run lint && npm test
+npx playwright install --with-deps chromium
+npm run test:e2e && npx tsc --noEmit --incremental false
+AI_MODE=mock DATABASE_URL="$(mktemp -d)/build.sqlite" npm run build
+docker build -t sales-coach:ci .
+sh deploy/container-smoke.sh
+```
+
+## Resend 生产邮件
+
+使用专用发信子域，按 Resend 控制台提供的值配置 SPF 和 DKIM，等待域名验证通过。创建限定该域的 Sending access 密钥。生产 `.env.production` 填写 `AUTH_MAIL_TRANSPORT=resend`、`AUTH_MAIL_FROM` 和 `RESEND_API_KEY`。验证找回密码和注册链接直接返回当前环境的 HTTPS Origin，并关闭账号验证和重置邮件的点击追踪，避免改写令牌链接。测试邮箱只允许隔离 staging 或显式浏览器回归。预发布须在实际收件箱验证投递、退信和限流。 [Resend 已验证域](https://resend.com/docs/dashboard/domains/introduction) · [发信权限](https://resend.com/changelog/new-api-key-permissions)
+
+## R2 或 S3 异地备份
+
+R2 使用 S3 兼容接口，配置区域 `auto` 和专用账户端点。S3 使用 AWS 区域与默认服务端加密，可结合组织已有 IAM 和 KMS。使用任何一方前都要确认私有桶、数据地域、取回成本和传输路径。初期选择已有账户且能完成独立恢复演练的一方。 [R2 S3 接口](https://developers.cloudflare.com/r2/api/s3/api/) · [S3 默认加密](https://docs.aws.amazon.com/AmazonS3/latest/userguide/default-encryption-faq.html)
+
+将运维环境保存在主机共享目录，例如 `/srv/sales-coach/shared/.env.ops`，权限为 600。凭据由命令单独传入备份或监控进程。使用独立私有桶和环境前缀，备份凭据仅需写入、回读对应备份。管理员另行配置生命周期规则。以下为可填模板：
+
+```sh
+BACKUP_PROVIDER=r2
+BACKUP_BUCKET=replace-with-private-bucket
+BACKUP_ENDPOINT=https://REPLACE_WITH_ACCOUNT_ID.r2.cloudflarestorage.com
+# AWS S3 时用 BACKUP_PROVIDER=s3 和 BACKUP_REGION=ap-southeast-1，并移除 BACKUP_ENDPOINT。
+BACKUP_PREFIX=sales-coach/staging/
+BACKUP_KEEP_DAYS=30
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+# 使用 AWS 临时凭证时填 AWS_SESSION_TOKEN。
+OPS_OFFSITE_REQUIRED=1
+OPS_ALERT_URL=''
+```
+
+先生成生命周期规则，审阅后由存储管理员在对应平台配置。使用具备读取生命周期权限的独立配置执行 `sh deploy/offsite.sh check-retention`，确认规则 ID、前缀和保留天数生效。规则仅覆盖选定前缀，默认保留 30 天。若从 CLI 更新生命周期，先合并已有规则，避免整份覆盖同桶规则。日常备份凭据无需删除对象或修改生命周期。 [R2 生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/) · [S3 生命周期](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html)
+
+```sh
+export OPS_ENV_FILE=/srv/sales-coach/shared/.env.ops
+sh deploy/offsite.sh lifecycle
+sh deploy/backup.sh
+sh deploy/offsite.sh backup
+sh deploy/offsite.sh restore '替换为成功上传输出的对象键' /var/lib/sales-coach/restore-drill.sqlite
+sh deploy/monitor.sh
+```
+
+每日通过主机调度器先做本地在线备份，再做异地备份。远程快照上传后立即回读，对照本地 SHA-256，再做 SQLite 完整性和外键校验，三项通过才更新最后验证时间。上传拒绝覆盖，恢复只能写入新文件。演练时用恢复库启动隔离实例并核对账号、训练和报告，确认后才申请切换。恢复涉及已删除用户时，按运营方审定的保留及删除流程核对。
+
+## 监控与故障处理
+
+- 外部探针请求 `https://实际域名/api/health`，在应用、代理或整机掉线时独立告警。
+- 主机每 15 分钟运行 `sh deploy/monitor.sh`，保留汇总 JSON 和退出状态。监控读取 Caddy 过去一小时的 API 状态码及 SQLite 的文字模型调用账本，提供 5xx、429、成功率、平均耗时、已知 Token、未知用量、库与 WAL 大小、可用磁盘、异地备份状态、邮件失败和系统异常。无样本指标显示空值。
+- 监控和备份可向 `OPS_ALERT_URL` 指定的 HTTPS 接收端发送固定事件代码。接收端需支持 JSON，请在预发布测试投递与去重。调度器监控非零退出和定时任务缺失，以覆盖 Docker 不可用的情况。
+- Caddy API 访问日志仅保留操作指标，移除全部请求信息和响应头。日志轮转可能缩短一小时统计窗口。日志归集不得添加邮箱、会话标识、令牌或对话内容。

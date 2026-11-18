@@ -9,6 +9,9 @@ test('deployment fails closed for missing credentials, nonpersistent database an
   };
   expect(releaseProblems(bad)).toEqual(expect.arrayContaining(['DATABASE_URL', 'BETTER_AUTH_URL', 'AUTH_MAIL_TRANSPORT', 'ACCOUNT_REQUIRED', 'AI_CONFIGURATION']));
   expect(() => mailConfiguration(bad)).toThrow('Production requires Resend');
+  expect(() => mailConfiguration({ RELEASE_PROFILE: 'production', AUTH_MAIL_TRANSPORT: 'resend',
+    E2E_TEST: '1', ACCOUNT_TEST_MAIL_DIR: '/tmp/mail', RESEND_API_KEY: 'test-placeholder', AUTH_MAIL_FROM: 'test@example.invalid',
+  })).toThrow('Production requires Resend');
   expect(releaseProblems({ RELEASE_PROFILE: 'staging', DATABASE_URL: '/var/lib/sales-coach/stage.sqlite' })).toEqual([]);
 });
 

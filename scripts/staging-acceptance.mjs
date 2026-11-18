@@ -10,6 +10,7 @@ import path from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import Database from 'better-sqlite3';
 import { createEmailVerificationToken } from 'better-auth/api';
+import { collectOps } from './ops-monitor.mjs';
 
 const caddy = process.env.CADDY_BIN;
 if (!caddy) throw Error('Set CADDY_BIN to the verified local Caddy executable.');
@@ -89,7 +90,7 @@ function spin(database) {
     ...process.env, DATABASE_URL: database, RELEASE_PROFILE: 'staging', ACCOUNT_REQUIRED: '1', E2E_TEST: '0',
     BETTER_AUTH_URL: origin, BETTER_AUTH_SECRET: secret, AUTH_MAIL_TRANSPORT: 'loopback-test',
     AUTH_MAIL_TEST_URL: `http://127.0.0.1:${mailbox.address().port}/emails`, AUTH_MAIL_FROM: '', RESEND_API_KEY: '',
-    AI_MODE: real ? 'real' : 'mock', VOICE_BAILIAN_API_KEY: '',
+    AI_MODE: real ? 'real' : 'mock', VOICE_BAILIAN_API_KEY: '', USAGE_ADMIN_EMAIL: email('alice'),
   }, log);
 }
 function client(ip) {
@@ -199,6 +200,9 @@ try {
   check(saved.scoringSource === report.mode && saved.issues.every(q => conversation.some(m => m.role === 'user' && m.id === q.message_id && m.content.includes(q.quote))), 'report source and evidence');
   check((await alice(route + '/report')).status === 200 && (await alice('/api/sessions')).data.data.items.length === 1, 'history and report');
   check((await bob(route)).status === 404 && (await bob(route + '/report')).status === 404 && (await bob(route + '/finish', post({}))).status === 404, 'cross-user isolation');
+  check((await alice('/api/account/usage?scope=system')).status === 200 &&
+    (await bob('/api/account/usage?scope=system')).status === 404, 'verified administrator access only');
+  mark('administrator usage access limited to configured account');
   check((await alice('/api/account/export')).data.sessions.length === 1, 'data export');
   mark('training, assessment, history, authorization and export');
   check((await alice('/api/auth/sign-out', post({}))).status === 200 && (await alice(route)).status === 404, 'logout');
@@ -283,9 +287,23 @@ try {
   check((await resumed(route)).status === 404 && (await bob('/api/account/export')).status === 200, 'delete scope and remaining account');
   mark('restart, restore, deletion and isolation');
   const sensitive = events.filter(event => event.text).map(event => event.text);
-  const logs = readFileSync(log, 'utf8') + readFileSync(path.join(directory, 'proxy.log'),'utf8');
+  const logs = readFileSync(log, 'utf8') + '\n' + readFileSync(path.join(directory, 'proxy.log'),'utf8');
   check(sensitive.every(link => !logs.includes(link) && !logs.includes(new URL(link).searchParams.get('token') ?? new URL(link).pathname.split('/').at(-1))), 'secret-bearing links not in logs');
   mark('no verification or reset links in logs');
+  const entries = logs.split(/\r?\n/);
+  const access = entries.flatMap(line => {
+    try {
+      const parsed = JSON.parse(line);
+      return parsed.logger?.startsWith('http.log.access.') ? [parsed] : [];
+    } catch { return []; }
+  });
+  check(access.length > 10 && access.every(entry => !entry.request && !entry.resp_headers && !entry.user_id),
+    'operational access logs omit request and response details');
+  const metrics = await collectOps(entries, { database: dbPath('restored'), backupDirectory: directory,
+    offsiteRequired: false, ready: true });
+  check(metrics.api.requests === access.length && metrics.events.mailFailures === 1, 'proxy counts and mail failure reach monitoring');
+  report.metrics = metrics;
+  mark('redacted Caddy status metrics and mail failure count');
 } catch (error) {
   report.error = error.message;
   console.error(error.message);

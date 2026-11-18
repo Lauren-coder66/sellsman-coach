@@ -3,7 +3,8 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 export function mailConfiguration(env: Readonly<Record<string, string | undefined>> = process.env) {
-  if (env.RELEASE_PROFILE === 'production' && env.AUTH_MAIL_TRANSPORT && env.AUTH_MAIL_TRANSPORT !== 'resend') {
+  if (env.RELEASE_PROFILE === 'production' && (env.AUTH_MAIL_TRANSPORT !== 'resend' ||
+      env.AUTH_MAIL_TEST_URL || env.ACCOUNT_TEST_MAIL_DIR || env.E2E_TEST === '1')) {
     throw new Error('Production requires Resend transport');
   }
   if (env.AUTH_MAIL_TRANSPORT === 'loopback-test') {
@@ -35,7 +36,13 @@ export async function sendAccountEmail(to: string, subject: string, url: string)
     signal: AbortSignal.timeout(8_000),
     headers: { ...(config.key ? { Authorization: `Bearer ${config.key}` } : {}), 'Content-Type': 'application/json' },
     body: JSON.stringify({ from: config.from, to: [to], subject, text: url }),
-  }).catch(() => { throw new Error('Account email transport unavailable'); });
-  if (!response.ok) throw Error(`Account email delivery failed (${response.status})`);
+  }).catch(() => {
+    console.warn('[ops-event] mail_failure network');
+    throw new Error('Account email transport unavailable');
+  });
   await response.body?.cancel();
+  if (!response.ok) {
+    console.warn('[ops-event] mail_failure rejected');
+    throw Error(`Account email delivery failed (${response.status})`);
+  }
 }

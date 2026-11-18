@@ -35,6 +35,9 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
 volumes:
   sales_data:
   sales_backups:
