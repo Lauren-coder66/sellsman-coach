@@ -4,7 +4,7 @@ const responseSchema = z.object({
   model: z.string().optional(),
   choices: z.array(z.unknown()).optional(),
   error: z.object({ code: z.union([z.number().int(), z.string()]).optional() }).optional(),
-  usage: z.object({ prompt_tokens: z.number().int().nonnegative().optional(), completion_tokens: z.number().int().nonnegative().optional(), total_tokens: z.number().int().nonnegative().optional(), cost: z.number().nonnegative().optional() }).optional(),
+  usage: z.object({ prompt_tokens: z.number().int().nonnegative().optional(), completion_tokens: z.number().int().nonnegative().optional(), total_tokens: z.number().int().nonnegative().optional(), cost: z.number().nonnegative().optional(), completion_tokens_details: z.object({ reasoning_tokens: z.number().int().nonnegative().nullish() }).nullish() }).optional(),
 });
 const choiceSchema = z.object({ message: z.object({ content: z.string().nullable() }), finish_reason: z.string().nullable().optional() });
 
@@ -12,11 +12,15 @@ export class AIRequestTimeoutError extends Error {
   constructor() { super('AI 服务响应超时，请重试'); }
 }
 
+export class AIRateLimitError extends Error {
+  constructor() { super('AI 服务请求过多或免费额度已用完，请稍后重试（HTTP 429）'); }
+}
+
 export class AIModelOutputError extends Error {}
 class AIInvalidJSONError extends AIModelOutputError {}
 class AIInvalidStructureError extends AIModelOutputError {}
 
-function configuration() {
+function configuration(operation: string) {
   const url = process.env.AI_API_URL;
   const model = process.env.AI_MODEL;
   const key = process.env.AI_API_KEY;
@@ -26,24 +30,27 @@ function configuration() {
   if (endpoint.protocol !== 'https:' && !(endpoint.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname))) {
     throw new Error('AI_API_URL 必须使用 HTTPS（本机测试端点除外）');
   }
-  const timeout = Number(process.env.AI_TIMEOUT_MS ?? 30_000);
+  const timeout = Number(process.env.AI_TIMEOUT_MS ?? (operation === 'report' ? 45_000 : 30_000));
   if (!Number.isInteger(timeout) || timeout < 1_000 || timeout > 45_000) throw new Error('AI_TIMEOUT_MS 必须介于 1000 与 45000 毫秒之间');
   return { provider, url: endpoint.toString(), model, key, timeout };
 }
 
-export async function callModel<T>(operation: string, system: string, input: unknown, schema: z.ZodType<T>, maxOutputTokens: number, retryInvalidJSON = false): Promise<T> {
-  const config = configuration();
+type ModelOptions = { retryFormat?: boolean; temperature?: number; openRouterReasoningEffort?: 'low'; onModel?: (model: string | null) => void };
+
+export async function callModel<T>(operation: string, system: string, input: unknown, schema: z.ZodType<T>, maxOutputTokens: number, options: ModelOptions = {}): Promise<T> {
+  const config = configuration(operation);
   const signal = AbortSignal.timeout(config.timeout);
   try {
-    return await requestModel(config, operation, system, input, schema, maxOutputTokens, signal);
+    return await requestModel(config, operation, system, input, schema, maxOutputTokens, signal, options);
   } catch (error) {
-    const recoverable = error instanceof AIInvalidJSONError || (operation === 'reply' && error instanceof AIInvalidStructureError);
-    if (!retryInvalidJSON || !recoverable || signal.aborted) throw error;
-    return requestModel(config, operation, system + '\n严格按上述字段输出一个可解析的 JSON 对象，不加代码围栏或说明。', input, schema, maxOutputTokens, signal);
+    const recoverable = error instanceof AIInvalidJSONError || (['reply', 'report'].includes(operation) && error instanceof AIInvalidStructureError);
+    if (!options.retryFormat || !recoverable || signal.aborted) throw error;
+    const evidenceRule = operation === 'report' ? '原话必须逐字复制对应的销售消息。' : '';
+    return requestModel(config, operation, system + '\n严格按上述字段输出一个可解析的 JSON 对象，不加代码围栏或说明。' + evidenceRule, input, schema, maxOutputTokens, signal, options);
   }
 }
 
-async function requestModel<T>(config: ReturnType<typeof configuration>, operation: string, system: string, input: unknown, schema: z.ZodType<T>, maxOutputTokens: number, signal: AbortSignal): Promise<T> {
+async function requestModel<T>(config: ReturnType<typeof configuration>, operation: string, system: string, input: unknown, schema: z.ZodType<T>, maxOutputTokens: number, signal: AbortSignal, options: ModelOptions): Promise<T> {
   const start = Date.now();
   let usage: z.infer<typeof responseSchema>['usage'];
   let actualModel: string | null = null;
@@ -56,9 +63,17 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
       method: 'POST',
       headers: { Authorization: `Bearer ${config.key}`, 'Content-Type': 'application/json' },
       signal,
-      body: JSON.stringify({ model: config.model, max_tokens: maxOutputTokens, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify(input) }] }),
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: maxOutputTokens,
+        temperature: options.temperature,
+        reasoning: config.provider === 'openrouter' && options.openRouterReasoningEffort ? { effort: options.openRouterReasoningEffort } : undefined,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify(input) }],
+      }),
     });
     if (response.status === 408 || response.status === 504) { outcome = 'timeout'; throw new AIRequestTimeoutError(); }
+    if (response.status === 429) { upstreamCode = 429; throw new AIRateLimitError(); }
     if (!response.ok) throw new Error(`AI 服务请求失败（HTTP ${response.status}）`);
     outputError = 'envelope';
     const data = responseSchema.parse(await response.json());
@@ -66,6 +81,7 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
     actualModel = data.model ?? null;
     upstreamCode = typeof data.error?.code === 'number' ? data.error.code : null;
     if (upstreamCode === 408 || upstreamCode === 504) { outcome = 'timeout'; throw new AIRequestTimeoutError(); }
+    if (upstreamCode === 429) throw new AIRateLimitError();
     outputError = 'choice';
     const choice = choiceSchema.parse(data.choices?.[0]);
     finishReason = choice.finish_reason ?? null;
@@ -83,6 +99,7 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
     catch { throw new AIInvalidJSONError('AI 返回了无效的 JSON，请重试'); }
     outputError = 'schema';
     const result = schema.parse(content);
+    options.onModel?.(actualModel);
     outputError = null;
     outcome = 'ok';
     return result;
@@ -95,6 +112,6 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
     if (error instanceof Error && error.message.startsWith('AI ')) throw error;
     throw new Error('AI 服务暂时不可用，请重试');
   } finally {
-    console.info('[ai-call]', JSON.stringify({ operation, provider: config.provider, requestedModel: config.model, actualModel, outcome, durationMs: Date.now() - start, maxOutputTokens, finishReason, upstreamCode, outputError, promptTokens: usage?.prompt_tokens ?? null, completionTokens: usage?.completion_tokens ?? null, totalTokens: usage?.total_tokens ?? null, cost: usage?.cost ?? null }));
+    console.info('[ai-call]', JSON.stringify({ operation, provider: config.provider, requestedModel: config.model, actualModel, outcome, durationMs: Date.now() - start, maxOutputTokens, finishReason, upstreamCode, outputError, promptTokens: usage?.prompt_tokens ?? null, completionTokens: usage?.completion_tokens ?? null, reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens ?? null, totalTokens: usage?.total_tokens ?? null, cost: usage?.cost ?? null }));
   }
 }

@@ -21,6 +21,12 @@ test('mock training workflow', async ({ page }) => {
     await expect(page.getByText(/超出我的预算/)).toBeVisible();
     await page.reload();
     await expect(page.getByText('价格是多少？')).toBeVisible();
+    for (const [index, content] of ['您现在想解决什么问题？', '我们可以安排下次沟通。'].entries()) {
+      await page.getByPlaceholder(/输入回应/).fill(content);
+      await page.getByRole('button', { name: '发送' }).click();
+      await expect(page.getByText(`${index + 2}/30 轮`)).toBeVisible();
+      await expect(page.getByRole('button', { name: '结束训练' })).toBeEnabled();
+    }
     page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '结束训练' }).click();
     await page.waitForURL('**/report/**');

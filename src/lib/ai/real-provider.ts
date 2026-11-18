@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { callModel } from './service';
-import { mockProvider } from './mock-provider';
+import { generateRealReport } from './real-report';
 import type { AIProvider, CustomerProfile } from './provider';
 
 const profileSchema = z.object({
@@ -28,7 +28,7 @@ export const customerPrompt = `你是画像中的买方，不是提供产品或�
 export const realProvider: AIProvider = {
   async generateCustomerSetup(scenario, focus) {
     const prompt = `你是销售训练的场景设计者。${profileRules} 再生成客户开场白。${openingRules} 仅输出 JSON 对象，顶层必须只有 profile（完整隐藏画像对象）和 opening（开场白字符串）。`;
-    const { profile, opening } = await callModel('setup', prompt, { scenario, focus }, setupSchema, 1600, true);
+    const { profile, opening } = await callModel('setup', prompt, { scenario, focus }, setupSchema, 1600, { retryFormat: true });
     return { profile: { ...profile, identity: scenario.identity, mode: 'real' }, opening };
   },
   async generateCustomerProfile(scenario, focus) {
@@ -40,9 +40,8 @@ export const realProvider: AIProvider = {
     return result.reply;
   },
   async generateCustomerReply(scenario, profile: CustomerProfile, messages, focus) {
-    const result = await callModel('reply', customerPrompt, { scenario, profile, focus, history: messages.map(({ role, content }) => ({ role, content })) }, replySchema, 1200, true);
+    const result = await callModel('reply', customerPrompt, { scenario, profile, focus, history: messages.map(({ role, content }) => ({ role, content })) }, replySchema, 1200, { retryFormat: true });
     return result.reply;
   },
-  // Phase 2.1 keeps the existing demonstration report; real model scoring is out of scope.
-  generateTrainingReport: mockProvider.generateTrainingReport,
+  generateTrainingReport: generateRealReport,
 };

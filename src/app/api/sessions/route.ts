@@ -10,6 +10,7 @@ import { focusDetails } from '@/lib/focus';
 import { eq, desc, and, or, lt } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
+import { reportSource } from '@/lib/report';
 
 const cursorSchema = z.object({ createdAt: z.number().int().nonnegative(), id: z.string().uuid() });
 
@@ -61,6 +62,6 @@ export async function GET(request: NextRequest) {
     const page = rows.slice(0,limit);
     const last = page.at(-1);
     const nextCursor = rows.length > limit && last ? Buffer.from(JSON.stringify({createdAt:last.createdAt,id:last.id})).toString('base64url') : null;
-    return success({items:page.map(row=>{const saved=db.select().from(trainingReports).where(eq(trainingReports.sessionId,row.id)).get();const focus=db.select().from(trainingFocus).where(eq(trainingFocus.sessionId,row.id)).get();const scores=saved?JSON.parse(saved.reportJson).scores:null;const score=scores?Object.values(scores as Record<string,{score:number}>).reduce((sum,item)=>sum+item.score,0):null;return {id:row.id,scenario:JSON.parse(row.scenarioJson),status:row.status,createdAt:row.createdAt,updatedAt:row.updatedAt,score,focusDimension:focus?.dimension??null}}),nextCursor});
+    return success({items:page.map(row=>{const saved=db.select().from(trainingReports).where(eq(trainingReports.sessionId,row.id)).get();const focus=db.select().from(trainingFocus).where(eq(trainingFocus.sessionId,row.id)).get();const report=saved?JSON.parse(saved.reportJson):null;const scores=report?.scores;const score=scores?Object.values(scores as Record<string,{score:number}>).reduce((sum,item)=>sum+item.score,0):null;return {id:row.id,scenario:JSON.parse(row.scenarioJson),status:row.status,createdAt:row.createdAt,updatedAt:row.updatedAt,score,scoreSource:report?reportSource(report):null,focusDimension:focus?.dimension??null}}),nextCursor});
   } catch(error) { return handleError(error); }
 }

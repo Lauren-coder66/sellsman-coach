@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
+import { mockProvider } from '../src/lib/ai/mock-provider';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'sales-coach-real-sim-'));
 const originalEnv = { ...process.env };
@@ -24,7 +25,7 @@ afterAll(() => {
 test('simulated real endpoint preserves ten turns, retries failure, and never adds duplicate replies', async () => {
   const ownerId = randomUUID();
   const id = randomUUID();
-  const scenario = { product: '[QA-TEST] 企业网站开发', description: '企业网站设计和维护', identity: '企业负责人', personality: '怀疑型', difficulty: '困难', goal: '处理客户异议' };
+  const scenario = { product: '[QA-TEST] 企业网站开发', description: '企业网站设计和维护', identity: '企业负责人', personality: '怀疑型', difficulty: '困难', goal: '处理客户异议' } as const;
   const profile = { identity: '企业负责人', needs: '增加线上询盘', budget: '每年两万元', concerns: '不确定投入效果', purchaseIntent: '谨慎比较', decisionCriteria: '需要案例和预算说明', mode: 'real' };
   const now = Date.now();
   db.insert(trainingSessions).values({ id, ownerId, scenarioJson: JSON.stringify(scenario), customerProfileJson: JSON.stringify(profile), status: 'active', createdAt: now, updatedAt: now }).run();
@@ -38,8 +39,23 @@ test('simulated real endpoint preserves ten turns, retries failure, and never ad
   process.env.AI_TIMEOUT_MS = '1000';
   vi.spyOn(console, 'info').mockImplementation(() => {});
   let failOnce = true;
+  let reportAttempts = 0;
   const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
-    const input = JSON.parse(JSON.parse(init.body as string).messages[1].content);
+    const request = JSON.parse(init.body as string);
+    const input = JSON.parse(request.messages[1].content);
+    if (input.messages) {
+      expect(input.profile).toBeUndefined();
+      expect(input.messages).toHaveLength(21);
+      expect(request.temperature).toBe(0);
+      reportAttempts++;
+      if (reportAttempts === 1) return new Response('', { status: 504 });
+      if (reportAttempts === 2) return Response.json({ choices: [{ message: { content: '{}' }, finish_reason: 'length' }] });
+      if (reportAttempts === 5) return new Response('', { status: 429 });
+      const report = await mockProvider.generateTrainingReport(scenario, input.messages);
+      if (reportAttempts === 3) return Response.json({ choices: [{ message: { content: 'not JSON' } }] });
+      if (reportAttempts === 4) report.issues[0].quote = '虚构发言';
+      return Response.json({ model: 'simulated-model', choices: [{ message: { content: JSON.stringify(report) } }] });
+    }
     expect(input.profile).toEqual(profile);
     const turns = input.history.filter((message: { role: string }) => message.role === 'user').length;
     expect(input.history.at(-1).role).toBe('user');
@@ -64,7 +80,18 @@ test('simulated real endpoint preserves ten turns, retries failure, and never ad
   expect(history).toHaveLength(21);
   expect(history.filter(message => message.role === 'user')).toHaveLength(10);
   expect(history.filter(message => message.role === 'customer')).toHaveLength(11);
-  expect((await finishSession(id, ownerId)).ok).toBe(true);
+  expect(await finishSession(id, randomUUID())).toMatchObject({ ok: false, status: 404 });
+  expect(reportAttempts).toBe(0);
+  expect(await finishSession(id, ownerId)).toMatchObject({ ok: false, status: 504, code: 'REPORT_TIMEOUT' });
+  expect(await finishSession(id, ownerId)).toMatchObject({ ok: false, status: 502, message: expect.stringContaining('Token 上限') });
+  expect(await finishSession(id, ownerId)).toMatchObject({ ok: false, status: 502 });
+  expect(reportAttempts).toBe(4);
+  expect(db.select().from(trainingReports).where(eq(trainingReports.sessionId, id)).all()).toHaveLength(0);
+  expect(db.select().from(trainingSessions).where(eq(trainingSessions.id, id)).get()?.status).toBe('failed');
+  expect(await finishSession(id, ownerId)).toMatchObject({ ok: false, status: 429, code: 'REPORT_RATE_LIMIT' });
+  const finished = await finishSession(id, ownerId);
+  expect(finished).toMatchObject({ ok: true, data: { report: { scoringSource: 'real', scoringModel: 'simulated-model' } } });
   expect(db.select().from(trainingReports).where(eq(trainingReports.sessionId, id)).all()).toHaveLength(1);
-  expect((await finishSession(id, ownerId)).ok).toBe(true);
+  expect(await finishSession(id, ownerId)).toEqual(finished);
+  expect(reportAttempts).toBe(6);
 });

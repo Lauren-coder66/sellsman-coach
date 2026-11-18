@@ -5,8 +5,9 @@ import { messages, trainingFocus, trainingReports, trainingSessions } from '@/li
 import { getAIProvider } from '@/lib/ai';
 import { focusDetails } from '@/lib/focus';
 import { reportSchema } from '@/lib/validation';
-import type { AIProvider, CustomerProfile, Report } from '@/lib/ai/provider';
-import { AIRequestTimeoutError } from '@/lib/ai/service';
+import type { AIProvider, CustomerProfile } from '@/lib/ai/provider';
+import { AIRateLimitError, AIRequestTimeoutError } from '@/lib/ai/service';
+import { reportEvidenceMatches, type ScoredReport } from '@/lib/report';
 
 type Problem = { ok: false; code: string; message: string; status: number };
 type Result<T> = { ok: true; data: T } | Problem;
@@ -63,12 +64,12 @@ export async function sendMessage(id: string, ownerId: string, content: string, 
   }
 }
 
-export async function finishSession(id: string, ownerId: string, provider: AIProvider = getAIProvider()): Promise<Result<{ report: Report | InsufficientReport }>> {
+export async function finishSession(id: string, ownerId: string, provider?: AIProvider): Promise<Result<{ report: ScoredReport | InsufficientReport }>> {
   const claimed = db.transaction(tx => {
     const session = tx.select().from(trainingSessions).where(owned(id, ownerId)).get();
     if (!session) return problem('NOT_FOUND', '会话不存在', 404);
     const saved = tx.select().from(trainingReports).where(eq(trainingReports.sessionId, id)).get();
-    if (saved) return { ok: true as const, data: { report: JSON.parse(saved.reportJson) as Report | InsufficientReport } };
+    if (saved) return { ok: true as const, data: { report: JSON.parse(saved.reportJson) as ScoredReport | InsufficientReport } };
     if (session.status === 'replying') return problem('IN_PROGRESS', '客户回复尚未完成，请稍后结束训练', 409);
     if (session.status === 'finishing' && Date.now() - session.updatedAt < leaseMs) return problem('IN_PROGRESS', '报告正在生成，请稍后重试', 409);
     if (!['active', 'failed', 'finishing', 'completed'].includes(session.status)) return problem('CONFLICT', '训练状态无效', 409);
@@ -81,13 +82,16 @@ export async function finishSession(id: string, ownerId: string, provider: AIPro
   if (!claimed.ok) return claimed;
   if (claimed.data) return { ok: true, data: claimed.data };
   try {
-    const userMessages = claimed.history.filter(message => message.role === 'user');
-    const report: Report | InsufficientReport = userMessages.length < 3
-      ? { summary: '训练样本不足，不生成正式能力评分。', customer_outcome: '样本不足', scores: null, issues: [], strengths: [], improvements: [], next_training_suggestion: '至少完成三轮训练。', sample_insufficient: true }
-      : reportSchema.parse(await provider.generateTrainingReport(JSON.parse(claimed.session.scenarioJson), claimed.history, focusFor(id)));
-    for (const issue of report.issues) {
-      const source = userMessages.find(message => message.id === issue.message_id);
-      if (!source || !source.content.includes(issue.quote)) throw new Error('报告引用与原始消息不符');
+    let report: ScoredReport | InsufficientReport;
+    if (claimed.history.filter(message => message.role === 'user').length < 3) {
+      report = { summary: '训练样本不足，不生成正式能力评分。', customer_outcome: '样本不足', scores: null, issues: [], strengths: [], improvements: [], next_training_suggestion: '至少完成三轮训练。', sample_insufficient: true };
+    } else {
+      const profile = JSON.parse(claimed.session.customerProfileJson) as CustomerProfile;
+      const scoringSource = profile.mode ?? 'mock';
+      const generated = await (provider ?? getAIProvider(scoringSource)).generateTrainingReport(JSON.parse(claimed.session.scenarioJson), claimed.history, focusFor(id));
+      const validated = reportSchema.parse(generated);
+      if (!reportEvidenceMatches(validated.issues, claimed.history)) throw new Error('报告引用与原始消息不符');
+      report = { ...validated, scoringSource, scoringModel: scoringSource === 'real' ? generated.scoringModel : undefined };
     }
     return db.transaction(tx => {
       const changed = tx.update(trainingSessions).set({ status: 'completed', updatedAt: Date.now() }).where(and(owned(id, ownerId), eq(trainingSessions.status, 'finishing'), eq(trainingSessions.updatedAt, claimed.stamp))).run();
@@ -97,6 +101,8 @@ export async function finishSession(id: string, ownerId: string, provider: AIPro
     });
   } catch (error) {
     db.update(trainingSessions).set({ status: 'failed', updatedAt: Date.now() }).where(and(owned(id, ownerId), eq(trainingSessions.status, 'finishing'), eq(trainingSessions.updatedAt, claimed.stamp))).run();
+    if (error instanceof AIRequestTimeoutError) return problem('REPORT_TIMEOUT', '报告生成超时，请重试', 504);
+    if (error instanceof AIRateLimitError) return problem('REPORT_RATE_LIMIT', error.message, 429);
     return problem('REPORT_ERROR', error instanceof Error ? error.message : '报告生成失败', 502);
   }
 }

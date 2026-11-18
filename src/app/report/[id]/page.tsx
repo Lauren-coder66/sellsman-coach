@@ -5,10 +5,9 @@ import { useParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { api } from '@/lib/client';
 import { focusDetails, focusDimensions, type FocusDimension } from '@/lib/focus';
+import { reportSource, reportSourceLabels, type ScoredReport } from '@/lib/report';
 
-type Score = { score: number; reason: string };
-type Issue = { message_id: string; quote: string; problem: string; reason: string; suggestion: string; better_expression: string };
-type Report = { summary: string; customer_outcome: string; scores: Record<FocusDimension, Score> | null; issues: Issue[]; strengths: string[]; improvements: string[]; next_training_suggestion: string };
+type Report = Omit<ScoredReport, 'scores'> & { scores: ScoredReport['scores'] | null };
 type Message = { id: string; role: string; content: string };
 type SessionData = { session: { focus: { dimension: FocusDimension; sourceSessionId: string; sourceAvailable: boolean } | null }; messages: Message[] };
 
@@ -28,18 +27,19 @@ function ReportContent() {
   const total = report?.scores ? focusDimensions.reduce((sum, dimension) => sum + report.scores![dimension].score, 0) : null;
   const lowest = report?.scores ? focusDimensions.reduce((best, dimension) => report.scores![dimension].score < report.scores![best].score ? dimension : best) : null;
   const focus = session?.focus;
+  const source = report ? reportSource(report) : null;
 
   return <main className="mx-auto max-w-5xl p-6 md:p-10">
     <header className="flex justify-between"><Link href="/" className="font-bold text-teal-800">◈ 销售陪练</Link><Link href="/history">训练历史</Link></header>
     <h1 className="mt-10 text-4xl font-bold">训练复盘</h1>
-    <p className="mt-3 text-sm text-amber-800">演示报告：评分由本地规则生成，不属于真实 AI 评估。</p>
+    {source && <p className="mt-3 text-sm text-amber-800">{source === 'real' ? `真实 AI 评分 · 基于本次对话的训练反馈${report?.scoringModel ? ` · ${report.scoringModel}` : ''}` : '演示报告：评分由本地规则生成，不属于真实 AI 评估。'}</p>}
     {error && <p role="alert" className="mt-6 text-red-700">{error}</p>}
     {!report && !error && <p className="mt-8">正在加载报告…</p>}
     {report && <>
       {focus && <section className="mt-8 rounded-xl bg-teal-50 p-5 text-teal-900"><b>本次训练重点：{focusDetails[focus.dimension].label}</b><p className="mt-2">{focusDetails[focus.dimension].instruction}</p>{focus.sourceAvailable && <Link href={`/train/${focus.sourceSessionId}`} className="mt-3 inline-block underline">返回来源训练</Link>}</section>}
       <section className="mt-8 border-y py-8"><div className="flex flex-wrap items-center gap-10"><div><span className="text-6xl font-bold text-teal-700">{total ?? '—'}</span><span className="text-slate-500"> / 20</span></div><div><p className="font-bold">客户态度：{report.customer_outcome}</p><p className="mt-2 text-slate-600">{report.summary}</p></div></div>{total === null && <p className="mt-4 text-amber-800">训练样本不足，少于3轮不生成正式能力评分。你仍可手动选择专项练习。</p>}</section>
       {report.scores && <section className="mt-10"><h2 className="text-2xl font-bold">四项能力</h2><div className="mt-5 grid gap-6 md:grid-cols-2">{focusDimensions.map(dimension => <div key={dimension}><div className="flex justify-between"><b>{focusDetails[dimension].label}</b><span>{report.scores![dimension].score}/5</span></div><div className="mt-2 h-2 rounded bg-slate-200"><div className="h-full rounded bg-teal-600" style={{ width: `${report.scores![dimension].score * 20}%` }} /></div><p className="mt-2 text-sm text-slate-600">{report.scores![dimension].reason}</p></div>)}</div></section>}
-      <section className="mt-12"><h2 className="text-2xl font-bold">针对性练习</h2><p className="mt-2 text-sm text-slate-600">{lowest ? `根据 Mock 演示评分，最低分维度是${focusDetails[lowest].label}；你可以选择任一维度。` : '本次没有正式评分，请自行选择练习重点。'}</p><div className="mt-5 grid gap-3 md:grid-cols-2">{focusDimensions.map(dimension => <Link key={dimension} href={`/create?from=${id}&focus=${dimension}`} className={`rounded-xl border p-5 hover:border-teal-600 ${dimension === lowest ? 'border-teal-600 bg-teal-50' : 'bg-white'}`}><div className="flex justify-between gap-3"><b>{focusDetails[dimension].label}</b>{dimension === lowest && <span className="text-xs text-teal-800">Mock 演示最低分</span>}</div><p className="mt-2 text-sm text-slate-600">{focusDetails[dimension].instruction}</p></Link>)}</div></section>
+      <section className="mt-12"><h2 className="text-2xl font-bold">针对性练习</h2><p className="mt-2 text-sm text-slate-600">{lowest && source ? `根据${reportSourceLabels[source]}，最低分维度是${focusDetails[lowest].label}。你可以选择任一维度。` : '本次没有正式评分，请自行选择练习重点。'}</p><div className="mt-5 grid gap-3 md:grid-cols-2">{focusDimensions.map(dimension => <Link key={dimension} href={`/create?from=${id}&focus=${dimension}`} className={`rounded-xl border p-5 hover:border-teal-600 ${dimension === lowest ? 'border-teal-600 bg-teal-50' : 'bg-white'}`}><div className="flex justify-between gap-3"><b>{focusDetails[dimension].label}</b>{dimension === lowest && <span className="text-xs text-teal-800">{source === 'mock' ? 'Mock 演示最低分' : '本次 AI 最低分'}</span>}</div><p className="mt-2 text-sm text-slate-600">{focusDetails[dimension].instruction}</p></Link>)}</div></section>
       <section className="mt-12"><h2 className="text-2xl font-bold">具体问题定位</h2>{report.issues.length ? report.issues.map(issue => <article key={issue.message_id} className="mt-4 border-l-4 border-amber-500 bg-white p-5"><p className="text-xs text-slate-500">原始消息 ID：{issue.message_id}</p><blockquote className="mt-2 font-semibold">「{issue.quote}」</blockquote><p className="mt-3">{issue.problem}：{issue.reason}</p><p className="mt-2 text-teal-800">建议：{issue.suggestion}</p><p className="mt-2 font-medium text-teal-800">推荐表达：{issue.better_expression}</p></article>) : <p className="mt-4 text-slate-500">本次没有可引用的具体问题。</p>}</section>
       <section className="mt-12 grid gap-6 md:grid-cols-2"><div><h2 className="font-bold">做得好的地方</h2>{report.strengths.map(value => <p key={value} className="mt-2">• {value}</p>)}</div><div><h2 className="font-bold">需要改善</h2>{report.improvements.map(value => <p key={value} className="mt-2">• {value}</p>)}</div></section>
       <p className="mt-8 rounded-xl bg-teal-50 p-5">下一次训练：{report.next_training_suggestion}</p>

@@ -22,5 +22,5 @@ export interface AIProvider {
   generateCustomerProfile(scenario: Scenario, focus?: TrainingFocusContext): Promise<CustomerProfile>;
   generateCustomerOpening(scenario: Scenario, profile: CustomerProfile, focus?: TrainingFocusContext): Promise<string>;
   generateCustomerReply(scenario: Scenario, profile: CustomerProfile, messages: ConversationMessage[], focus?: TrainingFocusContext): Promise<string>;
-  generateTrainingReport(scenario: Scenario, messages: ConversationMessage[], focus?: TrainingFocusContext): Promise<Report>;
+  generateTrainingReport(scenario: Scenario, messages: ConversationMessage[], focus?: TrainingFocusContext): Promise<Report & { scoringModel?: string }>;
 }
