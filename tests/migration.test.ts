@@ -1,10 +1,13 @@
 import { afterAll, expect, test } from 'vitest';
+import { execFile } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { readMigrationFiles } from 'drizzle-orm/migrator';
+import { migrateSqlite } from '../src/lib/db/migrate';
 
 const directory = mkdtempSync(path.join(tmpdir(), 'sales-coach-migration-'));
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
@@ -13,7 +16,7 @@ const migrationsFolder = path.resolve('drizzle');
 test('migrations create all tables in an empty database', () => {
   const sqlite = new Database(path.join(directory, 'fresh.sqlite'));
   try {
-    migrate(drizzle(sqlite), { migrationsFolder });
+    migrateSqlite(sqlite, migrationsFolder);
     const names = sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[];
     expect(names.map(row => row.name)).toEqual(expect.arrayContaining(['training_sessions', 'messages', 'training_reports', 'saved_scenarios', 'training_focus', 'ai_usage', 'subscriptions', 'billing_orders', 'voice_attempts']));
   } finally { sqlite.close(); }
@@ -30,9 +33,37 @@ test('migrations preserve a database created before the migration journal existe
       CREATE INDEX training_sessions_owner_idx ON training_sessions(owner_id);
       INSERT INTO training_sessions VALUES ('legacy-session', 'legacy-owner', '{}', '{}', 'active', 1, 1);
     `);
-    migrate(drizzle(sqlite), { migrationsFolder });
+    migrateSqlite(sqlite, migrationsFolder);
     expect(sqlite.prepare('SELECT id FROM training_sessions WHERE id = ?').get('legacy-session')).toEqual({ id: 'legacy-session' });
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'saved_scenarios'").get()).toBeTruthy();
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'training_focus'").get()).toBeTruthy();
   } finally { sqlite.close(); }
 });
+
+test('separate startup processes apply each migration to the same database once', async () => {
+  const file = path.join(directory, 'parallel.sqlite');
+  const migrationModule = pathToFileURL(path.resolve('src/lib/db/migrate.ts')).href;
+  const start = `
+    import Database from 'better-sqlite3';
+    import { migrateSqlite } from ${JSON.stringify(migrationModule)};
+    const db = new Database(process.argv[1]);
+    try {
+      db.pragma('busy_timeout = 5000');
+      db.pragma('journal_mode = WAL');
+      db.pragma('foreign_keys = ON');
+      migrateSqlite(db, process.argv[2]);
+    } finally { db.close(); }
+  `;
+  const execute = promisify(execFile);
+  const results = await Promise.allSettled(Array.from({ length: 8 }, () =>
+    execute(process.execPath, ['--input-type=module', '-e', start, file, migrationsFolder], { timeout: 10_000 })));
+  expect(results.flatMap(result => result.status === 'rejected' ? [String(result.reason)] : [])).toEqual([]);
+  const sqlite = new Database(file);
+  try {
+    const history = sqlite.prepare('SELECT hash, created_at FROM __drizzle_migrations ORDER BY created_at').all();
+    expect(history).toEqual(readMigrationFiles({ migrationsFolder }).map(migration => ({
+      hash: migration.hash, created_at: migration.folderMillis,
+    })));
+    expect(sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+  } finally { sqlite.close(); }
+}, 15_000);
