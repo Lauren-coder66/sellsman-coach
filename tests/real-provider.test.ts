@@ -149,3 +149,21 @@ test('mock and real modes are explicit', () => {
   process.env.AI_MODE = 'unexpected';
   expect(() => getAIProvider()).toThrow('AI_MODE');
 });
+
+test('Bailian uses non-thinking JSON mode and the configured Beijing endpoint', async () => {
+  process.env.AI_PROVIDER = 'bailian';
+  process.env.AI_MODEL = 'qwen3.7-flash';
+  process.env.AI_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+  const fetcher = vi.fn().mockResolvedValue(modelResponse({ reply: '可以先看交付清单吗？' }));
+  vi.stubGlobal('fetch', fetcher);
+  await expect(realProvider.generateCustomerOpening(scenario, profile)).resolves.toBe('可以先看交付清单吗？');
+  const [url, init] = fetcher.mock.calls[0];
+  expect(url).toBe(process.env.AI_API_URL);
+  expect(init.redirect).toBe('error');
+  const body = JSON.parse(init.body);
+  expect(body).toMatchObject({ model: 'qwen3.7-flash', enable_thinking: false, response_format: { type: 'json_object' } });
+  expect(body.reasoning).toBeUndefined();
+  process.env.AI_API_URL = 'https://example.com/chat/completions';
+  await expect(realProvider.generateCustomerOpening(scenario, profile)).rejects.toThrow('华北2');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});

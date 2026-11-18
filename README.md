@@ -14,6 +14,8 @@ npm run dev
 
 ## 真实 AI 文字客户
 
+生产配置以北京百炼 `qwen3.7-flash` 为默认选项，见 `.env.production.example`。本地 Mock 配置仍见 `.env.example`。百炼请求关闭思考并启用 JSON Object 模式，返回内容再由 Zod 校验。百炼评分最多生成 1400 输出 Token。真实验收与上线状态见 [测试报告](docs/TEST_REPORT.md)。
+
 在 `.env.local` 中设置 `AI_MODE=real`、`AI_PROVIDER`（供应商标识）、`AI_API_URL`（供应商提供的完整 Chat Completions 地址）、`AI_MODEL` 和 `AI_API_KEY`，然后重启服务。未设置 `AI_TIMEOUT_MS` 时，画像、开场白和对话请求默认 30 秒，评分默认 45 秒。手动设置时允许 1000–45000 毫秒，短于 60 秒的会话租约。生产接口使用 HTTPS，本机测试端点允许 HTTP。密钥只由服务端读取，不能设置为 `NEXT_PUBLIC_` 变量。接口须兼容 `model`、`messages`、`max_tokens`、`response_format: { type: "json_object" }` 和 `choices[0].message.content`。输出截断或结构不合格会返回 502，已识别的超时返回 504。
 
 真实模式默认顺序生成隐藏画像和开场白，分别限制 1400 和 1050 Token，并各自计算超时。开场白仍要求最多 60 字，Token 预算也需容纳模型推理。可用 `AI_CREATE_STRATEGY=combined` 在测试时尝试单次调用，输出上限 1600 Token。固定免费模型实测曾在此上限截断，合并路径目前为实验选项。两部分通过服务端校验后才写入 SQLite，前端只收到可见对话和会话信息。普通对话回复限制 1200 Token。合并创建遇到无法解析的 JSON，或回复遇到 JSON 解析或字段错误时，最多重试一次，与第一次共享超时预算，始终使用配置中的模型。

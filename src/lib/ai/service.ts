@@ -30,6 +30,9 @@ function configuration(operation: string) {
   if (endpoint.protocol !== 'https:' && !(endpoint.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname))) {
     throw new Error('AI_API_URL 必须使用 HTTPS（本机测试端点除外）');
   }
+  if (provider === 'bailian' && endpoint.href !== 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions') {
+    throw new Error('百炼模式需要使用华北2（北京）的 Chat Completions 接口');
+  }
   const timeout = Number(process.env.AI_TIMEOUT_MS ?? (operation === 'report' ? 45_000 : 30_000));
   if (!Number.isInteger(timeout) || timeout < 1_000 || timeout > 45_000) throw new Error('AI_TIMEOUT_MS 必须介于 1000 与 45000 毫秒之间');
   return { provider, url: endpoint.toString(), model, key, timeout };
@@ -62,12 +65,14 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
     const response = await fetch(config.url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${config.key}`, 'Content-Type': 'application/json' },
+      redirect: 'error',
       signal,
       body: JSON.stringify({
         model: config.model,
         max_tokens: maxOutputTokens,
         temperature: options.temperature,
         reasoning: config.provider === 'openrouter' && options.openRouterReasoningEffort ? { effort: options.openRouterReasoningEffort } : undefined,
+        enable_thinking: config.provider === 'bailian' ? false : undefined,
         response_format: { type: 'json_object' },
         messages: [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify(input) }],
       }),

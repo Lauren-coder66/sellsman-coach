@@ -36,7 +36,8 @@ export const generateRealReport: AIProvider['generateTrainingReport'] = async (s
   });
   let scoringModel: string | undefined;
   const messages = history.map(({ id, role, content }) => ({ id, role, content }));
-  const report = await callModel('report', reportPrompt, { scenario, focus, messages }, schema, 3800, {
+  const maxOutputTokens = process.env.AI_PROVIDER === 'bailian' ? 1400 : 3800;
+  const report = await callModel('report', reportPrompt, { scenario, focus, messages }, schema, maxOutputTokens, {
     retryFormat: true,
     temperature: 0,
     openRouterReasoningEffort: 'low',
