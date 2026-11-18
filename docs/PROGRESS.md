@@ -18,3 +18,9 @@
 ### 恢复开发
 
 分支 `codex/bailian-scoring`，初始恢复点 `codex/recovery-before-production` 指向 `d0ea2b3`。最新文字公开测试候选以该分支当前提交为准。真实文字复验原始记录在本地 QA 目录 `D:\CodexData\qa-temp\sales-coach-release-ae5d7d4d00e242ba9e4ce7f56b461026\text-result.json`，没有提交到 Git。恢复后先检查配置和 [部署与运维](DEPLOYMENT.md)，再验证 Linux 容器和真实邮箱；语音、支付分别验收。现有或生产库不得用来跑回归。
+
+### 2026-11-18 最终上线冲刺
+
+- 免费文字版通过本机 HTTPS 正式构建联调，包含隔离邮箱、真实百炼、数据权限、重启和恢复。评分模型的零分结构失败已定位并修复，最终固定语料通过。
+- 生产启动预检、邮件适配、容器限制、环境审批、发布前备份与 Linux 容器验收脚本已准备。
+- 冲刺前恢复分支为 `codex/recovery-before-release-761a8e9`。当前本地发布候选及公网缺口详见 [最终候选报告](RELEASE_REPORT.md)。

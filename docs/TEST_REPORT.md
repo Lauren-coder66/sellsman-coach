@@ -32,3 +32,21 @@
 - 本地生产模式及隔离运行时包均通过启动、健康、SQLite 在线备份、重启、异路径恢复和覆盖拒绝。最终 8 客户并发 Mock 冒烟完成 88 个请求，P50 13 ms、P95 32 ms，覆盖重复创建、消息、报告。这不是外网容量或真实 AI 延迟基准。
 - 独立运行时依赖安装审计 0 项；开发根依赖扫描仍报告测试和迁移工具链的漏洞，按文档限制开发工具暴露。Compose/YAML 与 shell 语法已检查，当前 Windows 缺少 Docker，Linux 容器、外网 TLS 与 GitHub Actions 尚未实际跑通。
 - 语音录音格式、百炼识别/合成适配、超额拒绝、重试和并发占用测试通过；未访问真实语音服务，未验证真实麦克风、播放及自然打断。
+
+## 2026-11-18 最终候选
+
+| 检查 | 结果 |
+| --- | --- |
+| `npx tsc --noEmit --incremental false` | 通过 |
+| `npm run lint` | 通过 |
+| `npm test` | 47/47 |
+| `npm run test:e2e` | 10/10 |
+| `npm run build` | 通过，使用隔离 SQLite |
+| `node scripts/production-smoke.mjs --load` | 重启、恢复、拒绝覆盖均通过，8 个并发客户端共 88 个成功请求，p50 12 ms，p95 30 ms。这是本机 Mock 压测 |
+| `node scripts/quota-smoke.mjs` | 并发拒绝 6 个，只有 2 次模拟上游调用，日额度和分钟限流均返回 429 |
+| 独立生产运行时锁检查及审计 | 通过，公开审计返回 0 个已知漏洞 |
+| 本机应用版本回滚 | 当前候选 → `761a8e9` → 当前候选，三个正式构建进程使用同一隔离 SQLite，训练数据一致 |
+| `node scripts/staging-acceptance.mjs --real --corpus` | 本机 HTTPS、隔离邮箱、真实 AI、两账号、固定语料、导出、删除与备份恢复通过 |
+| Linux 容器与公网 | 本机无容器运行时和 Linux WSL，Docker/Compose 与公网验证待执行 |
+
+真实模型调用详情、失败记录和预算见[最终候选报告](RELEASE_REPORT.md)。Caddy 使用私有测试 CA，邮件使用隔离 HTTP 桩，二者用于正式构建回归。

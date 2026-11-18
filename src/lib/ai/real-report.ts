@@ -57,7 +57,8 @@ export const generateRealReport: AIProvider['generateTrainingReport'] = async (s
       issues: z.array(z.strictObject({ evidence_ref: z.enum([...evidence.keys()]), ...feedback })).min(1).max(2),
     });
     const prompt = rubricPrompt + '\nissues 每项从一个 user 选择已有 evidence_ref。其 quote_candidate 将原样展示在报告中，反馈必须针对该片段。' +
-      '所有文本字段用转述，better_expression 是未发生过的改写示例。严格按此 JSON Schema 输出：' +
+      '所有文本字段用转述，better_expression 是未发生过的改写示例。scores 必须同时包含四个维度，每个维度值都必须是包含 score 和 reason 的对象。即使四项都为 0，也要分别保留四个对象及各自理由。' +
+      '结构示例（数值与理由仅作模板）："scores":{"need_discovery":{"score":0,"reason":"理由"},"value_expression":{"score":0,"reason":"理由"},"objection_handling":{"score":0,"reason":"理由"},"next_step":{"score":0,"reason":"理由"}}。严格按此 JSON Schema 输出：' +
       JSON.stringify(z.toJSONSchema(sourceSchema));
     const result = await callModel('report', prompt, { scenario, focus, messages }, sourceSchema, 1400, options);
     const report = checkedReport.parse({

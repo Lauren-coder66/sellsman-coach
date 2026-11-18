@@ -1,0 +1,49 @@
+name: Production release
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: "Full SHA of the already verified main commit"
+        required: true
+        type: string
+permissions:
+  actions: read
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+jobs:
+  request-release:
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Require successful verification on main
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yml/runs" -f branch=main -f event=push -f head_sha="$RELEASE_SHA" |
+            jq -e --arg sha "$RELEASE_SHA" '.workflow_runs | any(.head_sha == $sha and .conclusion == "success")' >/dev/null
+      - name: Request approved release from the host
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[A-Za-z0-9_-]+$ ]]
+          [ -n "$DEPLOY_KEY" ] && [ -n "$DEPLOY_KNOWN_HOSTS" ]
+          umask 077
+          key="$(mktemp)"
+          hosts="$(mktemp)"
+          trap 'rm -f "$key" "$hosts"' EXIT
+          printf '%s\n' "$DEPLOY_KEY" > "$key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$hosts"
+          ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$hosts" -i "$key" "$DEPLOY_USER@$DEPLOY_HOST" "release $RELEASE_SHA"

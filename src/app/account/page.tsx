@@ -11,7 +11,7 @@ const buttonClass = 'rounded-lg border px-4 py-2 disabled:opacity-50';
 
 export default function AccountPage() {
   const { data: session, isPending } = auth.useSession();
-  const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'reset' | 'verify'>('login');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   async function run(task: () => Promise<string>) {
@@ -88,6 +88,10 @@ export default function AccountPage() {
             await auth.requestPasswordReset({ email, redirectTo: '/account/reset' });
             return '如果邮箱已注册，将收到密码重置链接。';
           }
+          if (mode === 'verify') {
+            await auth.sendVerificationEmail({ email, callbackURL: '/account' });
+            return '如果该邮箱尚待验证，请查收新链接。没有收到时可稍后重试。';
+          }
           const result = await auth.signIn.email({ email, password });
           if (result.error) throw Error('无法登录，请检查密码并确认邮箱已验证。');
           return '已登录';
@@ -95,13 +99,14 @@ export default function AccountPage() {
       }}>
         {mode === 'register' && <label className="block">显示姓名<input className={fieldClass} name="name" required maxLength={80} /></label>}
         <label className="block">邮箱<input className={fieldClass} name="email" type="email" autoComplete="email" required maxLength={254} /></label>
-        {mode !== 'reset' && <label className="block">密码<input className={fieldClass} name="password" type="password" minLength={12} maxLength={128} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} required /></label>}
-        <button className={buttonClass} disabled={busy}>{mode === 'login' ? '登录' : mode === 'register' ? '发送验证并注册' : '发送密码重置链接'}</button>
+        {(mode === 'login' || mode === 'register') && <label className="block">密码<input className={fieldClass} name="password" type="password" minLength={12} maxLength={128} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} required /></label>}
+        <button className={buttonClass} disabled={busy}>{({ login: '登录', register: '发送验证并注册', reset: '发送密码重置链接', verify: '发送新验证链接' })[mode]}</button>
       </form>
       <div className="flex flex-wrap gap-3">
         {mode !== 'login' && <button onClick={() => setMode('login')}>返回登录</button>}
         {mode !== 'register' && <button onClick={() => setMode('register')}>注册账号</button>}
         {mode !== 'reset' && <button onClick={() => setMode('reset')}>忘记密码</button>}
+        {mode !== 'verify' && <button onClick={() => setMode('verify')}>重发验证邮件</button>}
       </div>
     </>}
     {notice && <p role="status">{notice}</p>}

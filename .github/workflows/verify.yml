@@ -25,9 +25,7 @@ jobs:
       - run: npx tsc --noEmit --incremental false
       - run: npm run build
       - run: node scripts/production-smoke.mjs
+      - run: node scripts/quota-smoke.mjs
       - run: docker build -t sales-coach:ci .
       - name: Container smoke
-        run: |
-          id="$(docker run -d --rm -p 127.0.0.1:3114:3000 -e AI_MODE=mock -e ACCOUNT_REQUIRED=0 sales-coach:ci)"
-          trap 'docker stop "$id" >/dev/null' EXIT
-          curl --retry 15 --retry-delay 1 --retry-all-errors --fail http://127.0.0.1:3114/api/health
+        run: sh deploy/container-smoke.sh

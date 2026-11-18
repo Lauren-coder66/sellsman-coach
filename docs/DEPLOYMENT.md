@@ -24,4 +24,51 @@
 - 兼容迁移时用 `sh deploy/release.sh rollback <previous-tag>` 回退应用镜像。遇到不兼容迁移须先在隔离库实际恢复，再协调停机切换，防止丢失新写入。未经验证的发布禁止依赖自动破坏性回滚。
 - 单机 SQLite 适合初期单写入节点。多实例或高并发写入需求需要重新验证或迁移到 PostgreSQL。
 
-运行时配置已写入项目。实际 Linux 镜像、Compose、TLS、邮件投递、外部告警、异机备份与正式环境回滚都需要独立环境验证。
+运行时配置已写入项目。本机 Caddy 与私有测试 CA 的 TLS 已验证。Linux 镜像、Compose、公网 TLS、真实邮件投递、外部告警、异机备份与正式环境回滚仍需独立环境验证。
+
+## 最终候选部署操作
+
+在符合组织要求的 Linux 主机上安装 Docker Engine、Compose v2，以及 Git。容器演练使用独立主机或独立 Docker 环境。这里的 `sales.example.com` 需替换为实际域名。
+
+```sh
+git clone https://github.com/Lauren-coder66/sellsman-coach.git /srv/sales-coach/repo
+cd /srv/sales-coach/repo
+git checkout --detach '<通过 Verify 的完整 SHA>'
+install -d -m 700 /srv/sales-coach/shared /srv/sales-coach/releases
+test -e /srv/sales-coach/shared/.env.production || install -m 600 .env.production.example /srv/sales-coach/shared/.env.production
+test -L .env.production || ln -s /srv/sales-coach/shared/.env.production .env.production
+# 在安全编辑器中填入生产配置。BETTER_AUTH_URL 形如 https://sales.example.com。
+# 生成随机认证密钥并保存到受限文件，不发送到共享日志。
+docker compose --env-file .env.production config --quiet
+sh deploy/release.sh build "$(git rev-parse HEAD)"
+docker compose -p sales-coach --env-file .env.production ps
+curl -fsSI http://sales.example.com/api/health
+curl -fsS https://sales.example.com/api/health
+docker compose -p sales-coach --env-file .env.production logs --since 10m app caddy
+```
+
+配置正式域、Resend 发件身份、账号密钥、百炼密钥和管理员邮箱。容器启动预检会拒绝缺失的必要配置。隔离回归以 `RELEASE_PROFILE=staging` 使用测试配置；正式 Compose 强制生产配置。预发布请先配置独立域名、邮箱和数据库卷，在真实收件箱验证链接，确认外部 TLS、账号流程、额度、导出和跨用户隔离，避免共用正式数据库。
+
+自动发布只接受通过 Verify 的 main SHA。配置 GitHub `production` environment 和审批后，管理员在主机安装审阅过的 `deploy/host-release.sh` 到 `/usr/local/bin/sales-coach-release`，为专用服务账号配置强制命令公钥，并验证该账号只能触发发布。Docker 访问权限等同于可管理主机，应限制服务账号和部署主机的访问范围。配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_KEY`、`DEPLOY_KNOWN_HOSTS`，后者应从可信渠道核对主机公钥。公钥示例：
+
+```text
+restrict,command="/usr/local/bin/sales-coach-release" ssh-ed25519 <部署公钥>
+```
+
+在 GitHub Actions 选择 **Production release → Run workflow**，传入完整 SHA，并由指定审核人确认。工作流不触发自动支付、DNS 或服务商账号变更。
+
+在主机定时任务中显式指定发布目录与 Compose 项目。删除旧备份前核对保留期和异机副本。恢复应在故障演练环境启动独立应用，验证对应的认证密钥和真实业务数据一致性：
+
+```sh
+sh deploy/backup.sh
+docker compose -p sales-coach --env-file .env.production exec -T app ls -l /var/backups/sales-coach/
+backup_name='替换为列表中的实际 SQLite 文件名'
+docker compose -p sales-coach --env-file .env.production cp "app:/var/backups/sales-coach/$backup_name" /path/to/protected/export.sqlite
+docker compose -p sales-coach --env-file .env.production exec -T app node scripts/sqlite-copy.mjs restore "/var/backups/sales-coach/$backup_name" /var/lib/sales-coach/restored.sqlite
+# 核验独立恢复库后，获准再在生产环境切换 DATABASE_URL。
+# 回退前检查现有数据与旧镜像兼容，并保留最新备份。
+sh deploy/release.sh rollback '<上次已验收的镜像标签>'
+curl -fsS https://sales.example.com/api/health
+```
+
+每日从外部检查 HTTPS 健康、账号错误率、数据库卷可写及剩余磁盘空间、模型 429 和超时。运维提供商确认备份调度与失败告警，限制访问备份并定期演练异机恢复。验收界限及成本见[最终候选报告](RELEASE_REPORT.md)。

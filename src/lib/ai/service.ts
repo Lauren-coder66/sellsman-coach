@@ -49,7 +49,7 @@ export async function callModel<T>(operation: string, system: string, input: unk
   } catch (error) {
     const recoverable = error instanceof AIInvalidJSONError || (['reply', 'report'].includes(operation) && error instanceof AIInvalidStructureError);
     if (!options.retryFormat || !recoverable || signal.aborted) throw error;
-    const correction = operation === 'report' ? (config.provider === 'bailian' ? '引用只能选择已有的 evidence_ref。' : '原话必须逐字复制对应的销售消息。')
+    const correction = operation === 'report' ? (config.provider === 'bailian' ? '引用只能选择已有的 evidence_ref，scores 必须有四个维度对象和各自的 score、reason。' : '原话必须逐字复制对应的销售消息。')
       : operation === 'reply' ? '回应最新销售发言里的新信息，不得原样复制上一轮客户发言。' : '';
     return requestModel(config, operation, system + '\n严格按上述字段输出一个可解析的 JSON 对象，不加代码围栏或说明。' + correction, input, schema, maxOutputTokens, signal, options);
   }

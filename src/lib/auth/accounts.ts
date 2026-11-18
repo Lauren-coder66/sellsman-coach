@@ -1,32 +1,14 @@
-import { randomUUID } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { betterAuth } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
 import { sqlite } from '@/lib/db';
-
-async function sendAccountEmail(to: string, subject: string, url: string) {
-  const testDirectory = process.env.ACCOUNT_TEST_MAIL_DIR;
-  if (process.env.NODE_ENV !== 'production' && process.env.E2E_TEST === '1' && testDirectory) {
-    await writeFile(path.join(testDirectory, `${randomUUID()}.json`), JSON.stringify({ to, subject, url }), { mode: 0o600, flag: 'wx' });
-    return;
-  }
-  if (!process.env.RESEND_API_KEY || !process.env.AUTH_MAIL_FROM) throw Error('Account email is not configured');
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    redirect: 'error',
-    signal: AbortSignal.timeout(8_000),
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: process.env.AUTH_MAIL_FROM, to: [to], subject, text: url }),
-  });
-  if (!response.ok) throw Error(`Account email delivery failed (${response.status})`);
-}
+import { mailConfiguration, sendAccountEmail } from './mail';
 
 export function accountsConfigured() {
   return !!(process.env.BETTER_AUTH_URL && process.env.BETTER_AUTH_SECRET);
 }
 
 function buildAuth() {
+  mailConfiguration();
   const baseURL = new URL(process.env.BETTER_AUTH_URL!);
   if ((baseURL.protocol !== 'https:' && (baseURL.protocol !== 'http:' || !['localhost', '127.0.0.1'].includes(baseURL.hostname))) ||
       baseURL.username || baseURL.password || baseURL.pathname !== '/' || baseURL.search || baseURL.hash) {
@@ -39,16 +21,21 @@ function buildAuth() {
     secret: process.env.BETTER_AUTH_SECRET,
     trustedOrigins: [baseURL.origin],
     telemetry: { enabled: false },
-    logger: { level: 'warn' },
+    logger: { level: 'warn', log: (level, message) => {
+      // Do not log provider payloads, emails or authentication tokens.
+      if (level === 'error') console.warn('[account-error]', message.startsWith('Failed to send') ? 'delivery-failed' : 'operation-failed');
+    } },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
       minPasswordLength: 12,
       revokeSessionsOnPasswordReset: true,
+      resetPasswordTokenExpiresIn: 1800,
       sendResetPassword: ({ user, url }) => sendAccountEmail(user.email, '重置销售陪练密码', url),
     },
     emailVerification: {
       sendOnSignUp: true,
+      expiresIn: 3600,
       sendVerificationEmail: ({ user, url }) => sendAccountEmail(user.email, '验证销售陪练邮箱', url),
     },
     user: {
