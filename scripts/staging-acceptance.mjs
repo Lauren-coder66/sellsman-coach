@@ -132,7 +132,7 @@ try {
   }
   mailbox.listen(0, localhost);
   await once(mailbox, 'listening');
-  let caddyConfig = readFileSync('deploy/Caddyfile', 'utf8').replace('{\n', `{\n admin off\n persist_config off\n http_port 3180\n https_port 3443\n default_bind 127.0.0.1\n skip_install_trust\n storage file_system {\n root "${directory.replaceAll('\\', '/')}/pki"\n }\n`);
+  let caddyConfig = readFileSync('deploy/Caddyfile', 'utf8').replaceAll('\r\n', '\n').replace('{\n', `{\n admin off\n persist_config off\n http_port 3180\n https_port 3443\n default_bind 127.0.0.1\n skip_install_trust\n storage file_system {\n root "${directory.replaceAll('\\', '/')}/pki"\n }\n`);
   caddyConfig = caddyConfig.replace(/^\{\$PUBLIC_DOMAIN\} \{/m, 'localhost {\n tls internal').replaceAll('{$PUBLIC_DOMAIN}', 'localhost')
     .replace('https://localhost{uri}', 'https://localhost:3443{uri}').replace('reverse_proxy app:3000', 'reverse_proxy 127.0.0.1:3120');
   const configFile = path.join(directory, 'Caddyfile');
