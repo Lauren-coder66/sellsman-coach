@@ -70,6 +70,9 @@ export async function getAccounts() {
         DELETE FROM subscriptions WHERE owner_id = 'account:' || OLD.id;
         UPDATE billing_orders SET owner_id = 'deleted:' || id WHERE owner_id = 'account:' || OLD.id;
       END;
+      CREATE TRIGGER IF NOT EXISTS sales_coach_feedback_delete AFTER DELETE ON "user" BEGIN
+        DELETE FROM product_feedback WHERE owner_id = 'account:' || OLD.id;
+      END;
     `);
     return auth;
   })().catch(error => { ready = undefined; throw error; });

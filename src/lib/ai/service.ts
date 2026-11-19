@@ -14,7 +14,11 @@ export class AIRequestTimeoutError extends Error {
 }
 
 export class AIRateLimitError extends Error {
-  constructor() { super('AI 服务请求过多或免费额度已用完，请稍后重试（HTTP 429）'); }
+  constructor() { super('AI 服务请求过多，请稍后重试（HTTP 429）'); }
+}
+
+export class AIProviderAccessError extends Error {
+  constructor() { super('模型服务已拒绝请求；可能是免费额度、模型权限或账号配置问题，请联系管理员。'); }
 }
 
 export class AIModelOutputError extends Error {}
@@ -22,6 +26,7 @@ class AIInvalidJSONError extends AIModelOutputError {}
 class AIInvalidStructureError extends AIModelOutputError {}
 
 function configuration(operation: string) {
+  if (process.env.RELEASE_PROFILE === 'production' && process.env.AI_CALLS_ENABLED !== '1') throw new AIProviderAccessError();
   const url = process.env.AI_API_URL;
   const model = process.env.AI_MODEL;
   const key = process.env.AI_API_KEY;
@@ -34,6 +39,9 @@ function configuration(operation: string) {
   if (provider === 'bailian' && endpoint.href !== 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions') {
     throw new Error('百炼模式需要使用华北2（北京）的 Chat Completions 接口');
   }
+  if (process.env.RELEASE_PROFILE === 'production' && (provider !== 'bailian' || model !== 'qwen3.7-flash')) {
+    throw new AIProviderAccessError();
+  }
   const timeout = Number(process.env.AI_TIMEOUT_MS ?? (operation === 'report' ? 45_000 : 30_000));
   if (!Number.isInteger(timeout) || timeout < 1_000 || timeout > 45_000) throw new Error('AI_TIMEOUT_MS 必须介于 1000 与 45000 毫秒之间');
   return { provider, url: endpoint.toString(), model, key, timeout };
@@ -42,6 +50,7 @@ function configuration(operation: string) {
 type ModelOptions = { retryFormat?: boolean; temperature?: number; openRouterReasoningEffort?: 'low'; onModel?: (model: string | null) => void };
 
 export async function callModel<T>(operation: string, system: string, input: unknown, schema: z.ZodType<T>, maxOutputTokens: number, options: ModelOptions = {}): Promise<T> {
+  if (!Number.isInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 3800) throw new AIQuotaError('单次模型输出额度配置无效。');
   const config = configuration(operation);
   const signal = AbortSignal.timeout(config.timeout);
   try {
@@ -59,6 +68,7 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
   const owner = aiOwner.getStore();
   if (!owner && process.env.ACCOUNT_REQUIRED === '1') throw new AIQuotaError('该操作需要账号与用量记录。');
   const payload = JSON.stringify(input);
+  if (Buffer.byteLength(system + payload, 'utf8') > 60_000) throw new AIQuotaError('本次对话内容过长，请缩短场景内容或开始新训练。');
   const ledger = owner ? await import('@/lib/usage') : null;
   const reservation = owner && ledger
     ? ledger.reserveUsage(owner, config.provider, config.model, operation, Buffer.byteLength(system + payload, 'utf8') + maxOutputTokens + 128)
@@ -88,7 +98,15 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
     });
     if (response.status === 408 || response.status === 504) { outcome = 'timeout'; throw new AIRequestTimeoutError(); }
     if (response.status === 429) { upstreamCode = 429; throw new AIRateLimitError(); }
-    if (!response.ok) throw new Error(`AI 服务请求失败（HTTP ${response.status}）`);
+    if (response.status === 403) { upstreamCode = 403; outcome = 'denied'; throw new AIProviderAccessError(); }
+    if (!response.ok) {
+      const errorBody = responseSchema.safeParse(await response.json().catch(() => null));
+      if (errorBody.success && errorBody.data.error?.code === 'AllocationQuota.FreeTierOnly') {
+        outcome = 'denied';
+        throw new AIProviderAccessError();
+      }
+      throw new Error(`AI 服务请求失败（HTTP ${response.status}）`);
+    }
     outputError = 'envelope';
     const data = responseSchema.parse(await response.json());
     usage = data.usage;
@@ -96,6 +114,7 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
     upstreamCode = typeof data.error?.code === 'number' ? data.error.code : null;
     if (upstreamCode === 408 || upstreamCode === 504) { outcome = 'timeout'; throw new AIRequestTimeoutError(); }
     if (upstreamCode === 429) throw new AIRateLimitError();
+    if (upstreamCode === 403 || data.error?.code === 'AllocationQuota.FreeTierOnly') { outcome = 'denied'; throw new AIProviderAccessError(); }
     outputError = 'choice';
     const choice = choiceSchema.parse(data.choices?.[0]);
     finishReason = choice.finish_reason ?? null;
@@ -126,7 +145,7 @@ async function requestModel<T>(config: ReturnType<typeof configuration>, operati
       const OutputError = outputError === 'schema' ? AIInvalidStructureError : AIModelOutputError;
       throw new OutputError('AI 返回内容不符合预期格式，请重试');
     }
-    if (error instanceof Error && error.message.startsWith('AI ')) throw error;
+    if (error instanceof AIProviderAccessError || (error instanceof Error && error.message.startsWith('AI '))) throw error;
     throw new Error('AI 服务暂时不可用，请重试');
   } finally {
     if (ledger && reservation) ledger.closeUsage(reservation, {

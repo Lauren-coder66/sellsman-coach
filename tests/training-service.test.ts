@@ -69,6 +69,45 @@ test('saved user message survives reply failure and retries with the same ID', a
   expect(rows()).toHaveLength(3);
 });
 
+test('unexpected provider and transaction errors return safe text and log only categories', async () => {
+  const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const secret = 'SQLITE_IOERR /private/database.sqlite API_KEY=secret conversation=private';
+    const requestId = randomUUID();
+    const provider = { ...mockProvider, generateCustomerReply: vi.fn().mockRejectedValue(Object.assign(new Error(secret), { name: 'API_KEY=secret', code: 'SQLITE_IOERR' })) };
+    const providerResult = await sendMessage(id, ownerId, '我的问题', requestId, provider);
+    expect(providerResult).toMatchObject({ ok: false, code: 'CUSTOMER_REPLY_ERROR', status: 502, message: '客户回复暂时失败，请重试本条消息。' });
+    expect(JSON.stringify(providerResult)).not.toContain(secret);
+    expect(rows().at(-1)).toMatchObject({ id: requestId, role: 'user' });
+
+    const conflicting = { ...mockProvider, generateCustomerReply: async () => {
+      db.insert(messages).values({ id: randomUUID(), sessionId: id, role: 'customer' as const, content: '占用回复顺序', sequence: 2, createdAt: Date.now() }).run();
+      return '正常回复';
+    } };
+    const transactionResult = await sendMessage(id, ownerId, '我的问题', requestId, conflicting);
+    expect(transactionResult).toMatchObject({ ok: false, code: 'CUSTOMER_REPLY_ERROR', status: 502 });
+    expect(JSON.stringify(transactionResult)).not.toMatch(/SQLITE_|database\.sqlite|secret/);
+    const logs = diagnostic.mock.calls.flat().join(' ');
+    expect(logs).toContain('SQLITE_IOERR');
+    expect(logs).toContain('SQLITE_CONSTRAINT');
+    expect(logs).not.toMatch(/private\/database|API_KEY=secret|conversation=private|我的问题/);
+  } finally { diagnostic.mockRestore(); }
+});
+
+test('unexpected report failure returns a safe 502 without exposing provider details', async () => {
+  for (let index = 0; index < 3; index++) await sendMessage(id, ownerId, `第${index}轮需求`, randomUUID(), mockProvider);
+  const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const provider = { ...mockProvider, generateTrainingReport: vi.fn().mockRejectedValue(new Error('provider raw response API_KEY=secret')) };
+    const result = await finishSession(id, ownerId, provider);
+    expect(result).toMatchObject({ ok: false, code: 'REPORT_ERROR', status: 502, message: '报告生成暂时失败，请重试。' });
+    expect(JSON.stringify(result)).not.toContain('API_KEY=secret');
+    expect(diagnostic.mock.calls.flat().join(' ')).not.toContain('API_KEY=secret');
+    expect(session().status).toBe('failed');
+    expect(reportRows()).toHaveLength(0);
+  } finally { diagnostic.mockRestore(); }
+});
+
 test('a timed out customer reply keeps the user message and returns 504', async () => {
   const requestId = randomUUID();
   const provider = { ...mockProvider, generateCustomerReply: vi.fn().mockRejectedValue(new AIRequestTimeoutError()) };

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { getAIProvider } from '../src/lib/ai';
 import { realProvider } from '../src/lib/ai/real-provider';
 import { mockProvider } from '../src/lib/ai/mock-provider';
-import { AIModelOutputError, AIRequestTimeoutError } from '../src/lib/ai/service';
+import { AIModelOutputError, AIProviderAccessError, AIRequestTimeoutError } from '../src/lib/ai/service';
 import { handleError } from '../src/lib/api';
 import type { ConversationMessage, Scenario } from '../src/lib/ai/provider';
 
@@ -102,6 +102,45 @@ test('upstream gateway timeout is returned as an AI timeout', async () => {
   await expect(realProvider.generateCustomerProfile(scenario)).rejects.toBeInstanceOf(AIRequestTimeoutError);
   expect(vi.mocked(console.info).mock.calls.flat().join(' ')).toContain('"outcome":"timeout"');
   expect(vi.mocked(console.info).mock.calls.flat().join(' ')).not.toContain('raw provider detail');
+});
+
+test('a rejected free quota returns a clear 503 without falling back or exposing upstream text', async () => {
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(new Response('private upstream detail', { status: 403 }))
+    .mockResolvedValueOnce(Response.json({ error: { code: 'AllocationQuota.FreeTierOnly' } }, { status: 400 }));
+  vi.stubGlobal('fetch', fetcher);
+  await expect(realProvider.generateCustomerProfile(scenario)).rejects.toBeInstanceOf(AIProviderAccessError);
+  await expect(realProvider.generateCustomerProfile(scenario)).rejects.toBeInstanceOf(AIProviderAccessError);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  const response = handleError(new AIProviderAccessError());
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ success: false, error: { code: 'AI_UNAVAILABLE' } });
+  expect(vi.mocked(console.info).mock.calls.flat().join(' ')).not.toContain('private upstream detail');
+});
+
+test('production real calls require an explicit cost gate and the fixed Bailian model', async () => {
+  const fetcher = vi.fn().mockResolvedValue(modelResponse({ reply: '可以了解一下吗？' }));
+  vi.stubGlobal('fetch', fetcher);
+  process.env.RELEASE_PROFILE = 'production';
+  process.env.AI_CALLS_ENABLED = '0';
+  await expect(realProvider.generateCustomerOpening(scenario, profile)).rejects.toBeInstanceOf(AIProviderAccessError);
+  process.env.AI_CALLS_ENABLED = '1';
+  await expect(realProvider.generateCustomerOpening(scenario, profile)).rejects.toBeInstanceOf(AIProviderAccessError);
+  process.env.AI_PROVIDER = 'bailian';
+  process.env.AI_MODEL = 'qwen3.7-flash';
+  process.env.AI_API_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+  await expect(realProvider.generateCustomerOpening(scenario, profile)).resolves.toBe('可以了解一下吗？');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+test('oversized model input is refused before an upstream request', async () => {
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  const history: ConversationMessage[] = [
+    { id: 'user-long', role: 'user', content: '测试'.repeat(12_000), sequence: 1 },
+  ];
+  await expect(realProvider.generateCustomerReply(scenario, profile, history)).rejects.toThrow('内容过长');
+  expect(fetcher).not.toHaveBeenCalled();
 });
 
 test('combined setup validates both outputs and retries invalid JSON once under the same deadline', async () => {

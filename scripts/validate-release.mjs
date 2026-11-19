@@ -16,6 +16,7 @@ export function releaseProblems(env) {
   if (!env.RESEND_API_KEY?.trim()) errors.push('RESEND_API_KEY');
   if (env.AI_MODE !== 'real' || env.AI_PROVIDER !== 'bailian' || env.AI_MODEL !== 'qwen3.7-flash' ||
       env.AI_API_URL !== 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions' || !env.AI_API_KEY?.trim()) errors.push('AI_CONFIGURATION');
+  if (env.AI_CALLS_ENABLED !== '1') errors.push('AI_CALLS_ENABLED');
   return errors;
 }
 

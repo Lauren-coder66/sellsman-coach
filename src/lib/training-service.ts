@@ -6,7 +6,7 @@ import { getAIProvider } from '@/lib/ai';
 import { focusDetails } from '@/lib/focus';
 import { reportSchema } from '@/lib/validation';
 import type { AIProvider, CustomerProfile } from '@/lib/ai/provider';
-import { AIRateLimitError, AIRequestTimeoutError } from '@/lib/ai/service';
+import { AIRateLimitError, AIModelOutputError, AIProviderAccessError, AIRequestTimeoutError } from '@/lib/ai/service';
 import { reportEvidenceMatches, type ScoredReport } from '@/lib/report';
 import { aiOwner, AIQuotaError } from '@/lib/ai/usage-context';
 
@@ -15,6 +15,11 @@ type Result<T> = { ok: true; data: T } | Problem;
 type Session = typeof trainingSessions.$inferSelect;
 const leaseMs = 60_000;
 const problem = (code: string, message: string, status: number): Problem => ({ ok: false, code, message, status });
+function logUnexpected(operation: 'reply' | 'report', correlationId: string, error: unknown) {
+  const category = error instanceof Error && /^[A-Za-z]{1,32}Error$/.test(error.name) ? error.name : 'Unknown';
+  const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && /^SQLITE_[A-Z_]+$/.test(error.code) ? error.code : undefined;
+  console.error('[training-error]', JSON.stringify({ operation, correlationId, category, code }));
+}
 const owned = (id: string, ownerId: string) => and(eq(trainingSessions.id, id), eq(trainingSessions.ownerId, ownerId));
 const lease = (session: Session) => and(owned(session.id, session.ownerId), eq(trainingSessions.status, session.status), eq(trainingSessions.updatedAt, session.updatedAt));
 const nextStamp = (session: Session) => Math.max(Date.now(), session.updatedAt + 1);
@@ -61,8 +66,11 @@ export async function sendMessage(id: string, ownerId: string, content: string, 
   } catch (error) {
     db.update(trainingSessions).set({ status: 'active', updatedAt: Date.now() }).where(and(owned(id, ownerId), eq(trainingSessions.status, 'replying'), eq(trainingSessions.updatedAt, claimed.stamp))).run();
     if (error instanceof AIRequestTimeoutError) return problem('AI_TIMEOUT', error.message, 504);
+    if (error instanceof AIProviderAccessError) return problem('AI_UNAVAILABLE', error.message, 503);
     if (error instanceof AIQuotaError || error instanceof AIRateLimitError) return problem('AI_RATE_LIMIT', error.message, 429);
-    return problem('CUSTOMER_REPLY_ERROR', error instanceof Error ? error.message : '客户回复失败', 502);
+    if (error instanceof AIModelOutputError) return problem('CUSTOMER_REPLY_ERROR', error.message, 502);
+    logUnexpected('reply', requestId, error);
+    return problem('CUSTOMER_REPLY_ERROR', '客户回复暂时失败，请重试本条消息。', 502);
   }
 }
 
@@ -104,8 +112,11 @@ export async function finishSession(id: string, ownerId: string, provider?: AIPr
   } catch (error) {
     db.update(trainingSessions).set({ status: 'failed', updatedAt: Date.now() }).where(and(owned(id, ownerId), eq(trainingSessions.status, 'finishing'), eq(trainingSessions.updatedAt, claimed.stamp))).run();
     if (error instanceof AIRequestTimeoutError) return problem('REPORT_TIMEOUT', '报告生成超时，请重试', 504);
+    if (error instanceof AIProviderAccessError) return problem('REPORT_UNAVAILABLE', error.message, 503);
     if (error instanceof AIQuotaError || error instanceof AIRateLimitError) return problem('REPORT_RATE_LIMIT', error.message, 429);
-    return problem('REPORT_ERROR', error instanceof Error ? error.message : '报告生成失败', 502);
+    if (error instanceof AIModelOutputError) return problem('REPORT_ERROR', error.message, 502);
+    logUnexpected('report', id, error);
+    return problem('REPORT_ERROR', '报告生成暂时失败，请重试。', 502);
   }
 }
 

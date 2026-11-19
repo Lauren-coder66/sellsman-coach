@@ -33,7 +33,7 @@ export async function DELETE(_request: NextRequest, { params }: Context) {
     const { id } = await params;
     const session = await getOwnedSession(id);
     if (!session) return failure('NOT_FOUND', '会话不存在', 404);
-    db.delete(trainingSessions).where(eq(trainingSessions.id, id)).run();
-    return success({ deleted: true });
+    const deleted = db.delete(trainingSessions).where(and(eq(trainingSessions.id, id), eq(trainingSessions.ownerId, session.ownerId))).run();
+    return deleted.changes ? success({ deleted: true }) : failure('NOT_FOUND', '会话不存在', 404);
   } catch (error) { return handleError(error); }
 }

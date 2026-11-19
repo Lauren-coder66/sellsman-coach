@@ -101,7 +101,7 @@ function Form() {
       <ScenarioFields scenario={scenario} onChange={setScenario} /></fieldset>
       {(error || focusError) && <p role="alert" className="text-red-700 md:col-span-2">{error || focusError}</p>}
       {notice && <p role="status" className="text-teal-700 md:col-span-2">{notice}</p>}
-      <div className="flex flex-wrap gap-3 md:col-span-2"><button type="button" onClick={save} disabled={busy || saving || sourceLoading} className="rounded-xl border border-teal-700 px-5 py-4 font-bold text-teal-700 disabled:opacity-50">{saving ? '正在保存…' : '保存为个人场景'}</button><button disabled={busy || saving || sourceLoading} className="flex-1 rounded-xl bg-teal-700 p-4 font-bold text-white disabled:opacity-50">{busy ? '正在创建…' : '开始模拟训练 →'}</button></div>
+      <div className="flex flex-wrap gap-3 md:col-span-2"><button type="button" onClick={save} disabled={busy || saving || sourceLoading} className="rounded-xl border border-teal-700 px-5 py-4 font-bold text-teal-700 disabled:opacity-50">{saving ? '正在保存…' : '保存为个人场景'}</button><button disabled={busy || saving || sourceLoading} className="flex-1 rounded-xl bg-teal-700 p-4 font-bold text-white disabled:opacity-50">{busy ? (aiMode === 'real' ? '正在生成客户场景…' : '正在创建…') : aiMode === 'real' ? '开始文字训练 →' : '开始模拟训练 →'}</button></div>
     </form>
   </main>;
 }

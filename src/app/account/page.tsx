@@ -8,6 +8,7 @@ import { api } from '@/lib/client';
 const auth = createAuthClient();
 const fieldClass = 'mt-1 w-full rounded-lg border px-3 py-2';
 const buttonClass = 'rounded-lg border px-4 py-2 disabled:opacity-50';
+class AccountActionError extends Error {}
 
 export default function AccountPage() {
   const { data: session, isPending } = auth.useSession();
@@ -18,7 +19,7 @@ export default function AccountPage() {
     setBusy(true);
     setNotice('');
     try { setNotice(await task()); }
-    catch (error) { setNotice(error instanceof Error ? error.message : '操作失败，请稍后再试'); }
+    catch (error) { setNotice(error instanceof AccountActionError ? error.message : '操作未完成，请检查网络后重试。'); }
     finally { setBusy(false); }
   }
 
@@ -32,7 +33,7 @@ export default function AccountPage() {
         const name = String(new FormData(event.currentTarget).get('name')).trim();
         void run(async () => {
           const result = await auth.updateUser({ name });
-          if (result.error) throw Error('无法保存姓名');
+          if (result.error) throw new AccountActionError('无法保存姓名');
           return '已保存姓名';
         });
       }}>
@@ -44,7 +45,7 @@ export default function AccountPage() {
         const newEmail = String(new FormData(event.currentTarget).get('email'));
         void run(async () => {
           const result = await auth.changeEmail({ newEmail, callbackURL: '/account' });
-          if (result.error) throw Error('邮箱修改失败');
+          if (result.error) throw new AccountActionError('邮箱修改失败');
           return '请查看邮箱确认修改。';
         });
       }}>
@@ -58,9 +59,10 @@ export default function AccountPage() {
         })}>迁入本浏览器的匿名记录</button>
         <a className={buttonClass} href="/api/account/export" download>导出我的数据</a>
         <Link className={buttonClass} href="/account/usage">查看额度</Link>
+        <Link className={buttonClass} href="/feedback">反馈与建议</Link>
         <button className={buttonClass} disabled={busy} onClick={() => void run(async () => {
           const result = await auth.signOut();
-          if (result.error) throw Error('退出失败');
+          if (result.error) throw new AccountActionError('退出失败');
           return '已退出登录';
         })}>退出登录</button>
       </div>
@@ -68,7 +70,7 @@ export default function AccountPage() {
         if (!window.confirm('申请删除账号及账号下的训练和场景？')) return;
         void run(async () => {
           const result = await auth.deleteUser({ callbackURL: '/' });
-          if (result.error) throw Error('删除申请失败');
+          if (result.error) throw new AccountActionError('删除申请失败');
           return '删除确认链接已发到你的邮箱。';
         });
       }}>申请删除账号</button>
@@ -81,19 +83,21 @@ export default function AccountPage() {
         void run(async () => {
           if (mode === 'register') {
             const result = await auth.signUp.email({ email, password, name: String(form.get('name')).trim(), callbackURL: '/account' });
-            if (result.error) throw Error('注册暂不可用，请检查信息后重试。');
+            if (result.error) throw new AccountActionError('注册暂不可用，请检查信息后重试。');
             return '请查收验证邮件，验证后登录。';
           }
           if (mode === 'reset') {
-            await auth.requestPasswordReset({ email, redirectTo: '/account/reset' });
+            const result = await auth.requestPasswordReset({ email, redirectTo: '/account/reset' });
+            if (result.error) throw new AccountActionError('暂时无法发送重置邮件，请稍后重试。');
             return '如果邮箱已注册，将收到密码重置链接。';
           }
           if (mode === 'verify') {
-            await auth.sendVerificationEmail({ email, callbackURL: '/account' });
+            const result = await auth.sendVerificationEmail({ email, callbackURL: '/account' });
+            if (result.error) throw new AccountActionError('暂时无法发送验证邮件，请稍后重试。');
             return '如果该邮箱尚待验证，请查收新链接。没有收到时可稍后重试。';
           }
           const result = await auth.signIn.email({ email, password });
-          if (result.error) throw Error('无法登录，请检查密码并确认邮箱已验证。');
+          if (result.error) throw new AccountActionError('无法登录，请检查密码并确认邮箱已验证。');
           return '已登录';
         });
       }}>
@@ -110,6 +114,6 @@ export default function AccountPage() {
       </div>
     </>}
     {notice && <p role="status">{notice}</p>}
-    <footer className="flex gap-4 text-sm"><Link href="/privacy">数据与隐私</Link><Link href="/terms">使用说明</Link></footer>
+    <footer className="flex flex-wrap gap-4 text-sm"><Link href="/privacy">数据与隐私</Link><Link href="/terms">使用说明</Link><Link href="/feedback">反馈与建议</Link></footer>
   </main>;
 }

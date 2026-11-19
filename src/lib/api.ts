@@ -1,6 +1,6 @@
 import {NextRequest,NextResponse} from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import {AIModelOutputError,AIRequestTimeoutError} from '@/lib/ai/service';
+import {AIModelOutputError,AIProviderAccessError,AIRequestTimeoutError} from '@/lib/ai/service';
 import {AccountRequiredError} from '@/lib/auth/errors';
 import {AIQuotaError} from '@/lib/ai/usage-context';
 import {AIRateLimitError} from '@/lib/ai/service';
@@ -12,6 +12,7 @@ export function handleError(error: unknown) {
   if (error instanceof AccountRequiredError) return failure('ACCOUNT_REQUIRED', '请先登录已验证的账号', 401);
   if (error instanceof AIQuotaError || error instanceof AIRateLimitError) return failure('AI_RATE_LIMIT', error.message, 429);
   if (error instanceof AIRequestTimeoutError) return failure('AI_TIMEOUT', error.message, 504);
+  if (error instanceof AIProviderAccessError) return failure('AI_UNAVAILABLE', error.message, 503);
   if (error instanceof AIModelOutputError) return failure('AI_INVALID_OUTPUT', error.message, 502);
   console.error('[api-error]', error instanceof Error ? error.name : 'Unknown');
   return failure('INTERNAL_ERROR', '服务器暂时无法处理请求', 500);

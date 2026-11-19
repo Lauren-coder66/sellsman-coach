@@ -89,3 +89,11 @@ export const voiceAttempts = sqliteTable('voice_attempts', {
   transcript: text('transcript'),
   endedAt: integer('ended_at'),
 }, table => [index('voice_attempts_owner_time_idx').on(table.ownerId, table.startedAt)]);
+
+export const productFeedback = sqliteTable('product_feedback', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  category: text('category', { enum: ['problem', 'suggestion', 'other'] }).notNull(),
+  content: text('content').notNull(),
+  createdAt: integer('created_at').notNull(),
+}, table => [index('product_feedback_owner_time_idx').on(table.ownerId, table.createdAt)]);

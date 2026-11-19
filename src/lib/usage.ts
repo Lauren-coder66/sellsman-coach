@@ -63,7 +63,11 @@ export function usageSummary(owner?: string) {
     coalesce(sum(CASE WHEN operation='voice-turn' THEN reserved_tokens ELSE 0 END),0) voiceSeconds,
     count(*)-count(tokens) unknownUsageCalls FROM ai_usage WHERE ${scope} started_at>=?`;
   const rollup = sqlite.prepare(`SELECT provider,model,count(*) calls,count(*)-count(cost) unknownCostCalls,
-    SUM(cost) reportedCost,count(*)-sum(CASE WHEN outcome='ok' THEN 1 ELSE 0 END) nonSuccessCalls
+    SUM(cost) reportedCost,
+    sum(CASE WHEN outcome='ok' THEN 1 ELSE 0 END) successCalls,
+    sum(CASE WHEN outcome IS NOT NULL AND outcome!='ok' THEN 1 ELSE 0 END) failedCalls,
+    count(*)-count(outcome) pendingCalls,
+    round(avg(CASE WHEN completed_at IS NOT NULL THEN completed_at-started_at END)) averageDurationMs
     FROM ai_usage WHERE ${scope} started_at>=? GROUP BY provider,model ORDER BY provider,model`).all(...args, month);
   return { day: sqlite.prepare(sql).get(...args, day), month: sqlite.prepare(sql).get(...args, month),
     limits: owner ? planFor(owner, now.getTime()) : { day: systemDay }, byModel: rollup };

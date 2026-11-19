@@ -18,7 +18,7 @@ test('migrations create all tables in an empty database', () => {
   try {
     migrateSqlite(sqlite, migrationsFolder);
     const names = sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[];
-    expect(names.map(row => row.name)).toEqual(expect.arrayContaining(['training_sessions', 'messages', 'training_reports', 'saved_scenarios', 'training_focus', 'ai_usage', 'subscriptions', 'billing_orders', 'voice_attempts']));
+    expect(names.map(row => row.name)).toEqual(expect.arrayContaining(['training_sessions', 'messages', 'training_reports', 'saved_scenarios', 'training_focus', 'ai_usage', 'subscriptions', 'billing_orders', 'voice_attempts', 'product_feedback']));
   } finally { sqlite.close(); }
 });
 
@@ -37,6 +37,7 @@ test('migrations preserve a database created before the migration journal existe
     expect(sqlite.prepare('SELECT id FROM training_sessions WHERE id = ?').get('legacy-session')).toEqual({ id: 'legacy-session' });
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'saved_scenarios'").get()).toBeTruthy();
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'training_focus'").get()).toBeTruthy();
+    expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'product_feedback'").get()).toBeTruthy();
   } finally { sqlite.close(); }
 });
 

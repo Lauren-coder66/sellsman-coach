@@ -18,6 +18,7 @@ test('real API keeps concurrent sends and finishes idempotent and isolated', asy
     expect((await outsider.request.post(`/api/sessions/${id}/messages`, { data: { content: '越权发送', requestId: randomUUID() } })).status()).toBe(404);
     expect((await outsider.request.post(`/api/sessions/${id}/finish`)).status()).toBe(404);
     expect((await outsider.request.get(`/api/sessions/${id}/report`)).status()).toBe(404);
+    expect((await outsider.request.delete(`/api/sessions/${id}`)).status()).toBe(404);
 
     const requestId = randomUUID();
     const sends = await Promise.all(Array.from({ length: 8 }, () => page.request.post(`/api/sessions/${id}/messages`, { data: { content: '我想了解您的需求', requestId } })));

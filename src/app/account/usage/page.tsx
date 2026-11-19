@@ -6,7 +6,7 @@ import { api } from '@/lib/client';
 type Period = { calls: number; budgetTokens: number; measuredTokens: number; unknownUsageCalls: number; voiceSeconds: number };
 type Usage = {
   day: Period; month: Period; limits: { day: number; month: number; label?: string; voiceMinutes?: number };
-  byModel: { provider: string; model: string; calls: number; unknownCostCalls: number; reportedCost: number | null; nonSuccessCalls: number }[];
+  byModel: { provider: string; model: string; calls: number; unknownCostCalls: number; reportedCost: number | null; successCalls: number; failedCalls: number; pendingCalls: number; averageDurationMs: number | null }[];
 };
 
 export default function AccountUsage() {
@@ -34,7 +34,9 @@ export default function AccountUsage() {
       {usage.byModel.length === 0 && <p>暂无真实模型调用。</p>}
       {usage.byModel.map(row => <article className="rounded-lg border p-3" key={`${row.provider}:${row.model}`}>
         <h3 className="font-semibold">{row.model}</h3>
-        <p>{row.calls} 次调用，{row.nonSuccessCalls} 次未成功。已报告费用 {row.reportedCost === null ? '未知' : row.reportedCost.toString()}，{row.unknownCostCalls} 次未报告费用。</p>
+        <p>{row.calls} 次调用，成功 {row.successCalls} 次，失败 {row.failedCalls} 次，处理中或无结果 {row.pendingCalls} 次。</p>
+        <p>成功率 {row.successCalls + row.failedCalls === 0 ? '暂无结果' : `${Math.round(row.successCalls / (row.successCalls + row.failedCalls) * 100)}%`}，已完成请求平均耗时 {row.averageDurationMs === null ? '未知' : `${row.averageDurationMs} 毫秒`}。</p>
+        <p>已报告费用 {row.reportedCost === null ? '未知' : row.reportedCost.toString()}，{row.unknownCostCalls} 次未报告费用。</p>
       </article>)}
     </> : <p>正在读取用量…</p>}
   </main>;
