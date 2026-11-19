@@ -17,7 +17,7 @@ const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 export default defineConfig({
   testDir: './e2e',
   workers: 2,
-  use: { baseURL: 'http://localhost:3101', launchOptions: existsSync(chrome) ? { executablePath: chrome } : {} },
+  use: { baseURL: 'http://localhost:3101', trace: 'retain-on-failure', launchOptions: existsSync(chrome) ? { executablePath: chrome } : {} },
   webServer: {
     command: 'npm run dev -- --port 3101',
     url: 'http://localhost:3101',

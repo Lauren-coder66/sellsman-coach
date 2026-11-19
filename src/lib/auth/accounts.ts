@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
 import { sqlite } from '@/lib/db';
 import { mailConfiguration, sendAccountEmail } from './mail';
+import { logE2EDiagnostic } from '@/lib/e2e-diagnostics';
 
 export function accountsConfigured() {
   return !!(process.env.BETTER_AUTH_URL && process.env.BETTER_AUTH_SECRET);
@@ -56,11 +57,15 @@ let ready: Promise<ReturnType<typeof buildAuth>> | undefined;
 
 export async function getAccounts() {
   if (!accountsConfigured()) return null;
+  let initializationStage = 'build-auth';
   ready ??= (async () => {
     const auth = buildAuth();
+    initializationStage = 'plan-auth-migrations';
     const plan = await getMigrations(auth.options);
     if (plan.schemaProblems.length) throw Error('Account schema needs repair');
+    initializationStage = 'run-auth-migrations';
     await plan.runMigrations();
+    initializationStage = 'ensure-owner-schema';
     sqlite.exec(`
       CREATE TABLE IF NOT EXISTS anonymous_owner_claims (owner_id TEXT PRIMARY KEY);
       CREATE TRIGGER IF NOT EXISTS sales_coach_account_delete AFTER DELETE ON "user" BEGIN
@@ -74,7 +79,8 @@ export async function getAccounts() {
         DELETE FROM product_feedback WHERE owner_id = 'account:' || OLD.id;
       END;
     `);
+    logE2EDiagnostic('auth-init', 'ready', undefined, undefined, true);
     return auth;
-  })().catch(error => { ready = undefined; throw error; });
+  })().catch(error => { logE2EDiagnostic('auth-init', initializationStage, error, undefined, true); ready = undefined; throw error; });
   return ready;
 }

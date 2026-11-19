@@ -11,29 +11,37 @@ import { eq, desc, and, or, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import { reportSource } from '@/lib/report';
 import { aiOwner } from '@/lib/ai/usage-context';
+import { e2eCorrelationId, logE2EDiagnostic } from '@/lib/e2e-diagnostics';
 
 const cursorSchema = z.object({ createdAt: z.number().int().nonnegative(), id: z.string().uuid() });
 
 export async function POST(request: NextRequest) {
+  const correlationId = e2eCorrelationId(request.headers);
+  let stage = 'parse-request';
   try {
     const parsed = await parseJson(request, sessionCreateSchema);
     if (parsed.error) return parsed.error;
     const { requestId, sourceSessionId, focusDimension, ...scenario } = parsed.data!;
-    const ownerId = await getOrCreateOwnerId();
+    const ownerId = await getOrCreateOwnerId(nextStage => { stage = nextStage; });
+    stage = 'owner-resolved';
     const id = requestId ?? randomUUID();
     const scenarioJson = JSON.stringify(scenario);
-    const resolveExisting = () => {
+    const resolveExisting = (scope: 'initial' | 'after-transaction') => {
+      stage = scope === 'initial' ? 'idempotent-session-query' : 'transaction-result-session-query';
       const row = db.select().from(trainingSessions).where(eq(trainingSessions.id, id)).get();
       if (!row) return null;
       if (row.ownerId !== ownerId || row.scenarioJson !== scenarioJson) return failure('DUPLICATE', '创建请求 ID 已被使用', 409);
+      stage = scope === 'initial' ? 'idempotent-focus-query' : 'transaction-result-focus-query';
       const savedFocus = db.select().from(trainingFocus).where(eq(trainingFocus.sessionId, id)).get();
       if (savedFocus?.sourceSessionId !== sourceSessionId || savedFocus?.dimension !== focusDimension) return failure('DUPLICATE', '创建请求内容已变更', 409);
       return success({ id, status: row.status, replayed: true });
     };
-    const existing = resolveExisting();
+    const existing = resolveExisting('initial');
     if (existing) return existing;
+    stage = 'source-session-query';
     if (sourceSessionId && !db.select({id:trainingSessions.id}).from(trainingSessions).where(and(eq(trainingSessions.id,sourceSessionId),eq(trainingSessions.ownerId,ownerId))).get()) return failure('NOT_FOUND','来源训练不存在',404);
     const focus = focusDimension ? {dimension:focusDimension,instruction:focusDetails[focusDimension].instruction} : undefined;
+    stage = 'generate-customer';
     const provider = getAIProvider();
     const { profile, opening } = await aiOwner.run(ownerId, async () => {
       if (provider.generateCustomerSetup && process.env.AI_CREATE_STRATEGY === 'combined') {
@@ -43,18 +51,32 @@ export async function POST(request: NextRequest) {
       return { profile, opening: await provider.generateCustomerOpening(scenario, profile, focus) };
     });
     const now = Date.now();
+    stage = 'transaction-begin';
     const created = db.transaction(tx => {
+      stage = 'owner-access-check';
       if (!canUseOwner(ownerId)) return false;
+      stage = 'transaction-session-query';
       if (tx.select({id:trainingSessions.id}).from(trainingSessions).where(eq(trainingSessions.id,id)).get()) return false;
+      stage = 'transaction-source-query';
       if (sourceSessionId && !tx.select({id:trainingSessions.id}).from(trainingSessions).where(and(eq(trainingSessions.id,sourceSessionId),eq(trainingSessions.ownerId,ownerId))).get()) return false;
+      stage = 'training-sessions-insert';
       tx.insert(trainingSessions).values({id, ownerId, scenarioJson, customerProfileJson: JSON.stringify(profile), status:'active', createdAt:now, updatedAt:now}).run();
+      stage = 'messages-insert';
       tx.insert(messages).values({id:randomUUID(),sessionId:id,role:'customer',content:opening,sequence:0,createdAt:now}).run();
-      if (sourceSessionId && focusDimension) tx.insert(trainingFocus).values({sessionId:id,sourceSessionId,dimension:focusDimension,createdAt:now}).run();
+      if (sourceSessionId && focusDimension) {
+        stage = 'training-focus-insert';
+        tx.insert(trainingFocus).values({sessionId:id,sourceSessionId,dimension:focusDimension,createdAt:now}).run();
+      }
+      stage = 'transaction-commit';
       return true;
     });
-    if (!created) return resolveExisting() ?? failure('NOT_FOUND','账号或来源训练不可用',404);
+    stage = 'transaction-result-check';
+    if (!created) return resolveExisting('after-transaction') ?? failure('NOT_FOUND','账号或来源训练不可用',404);
     return success({id, status:'active', scenario, focus}, 201);
-  } catch (error) { return handleError(error); }
+  } catch (error) {
+    logE2EDiagnostic('session-create', stage, error, correlationId, true);
+    return handleError(error);
+  }
 }
 
 export async function GET(request: NextRequest) {

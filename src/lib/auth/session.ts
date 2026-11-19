@@ -8,10 +8,15 @@ import { AccountRequiredError } from './errors';
 
 export const anonymousCookie = 'sales_coach_owner';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+type DiagnosticStage = (stage: string) => void;
 
-export async function getAccountSession() {
+export async function getAccountSession(onStage?: DiagnosticStage) {
+  onStage?.('owner-init-before');
   const auth = await getAccounts();
-  return auth ? auth.api.getSession({ headers: await headers() }) : null;
+  onStage?.('owner-init-after');
+  if (!auth) return null;
+  onStage?.('owner-account-query');
+  return auth.api.getSession({ headers: await headers() });
 }
 
 export function accountOwner(id: string) { return `account:${id}`; }
@@ -22,21 +27,25 @@ export function canUseOwner(owner: string) {
   return uuid.test(owner) && !sqlite.prepare('SELECT 1 FROM anonymous_owner_claims WHERE owner_id = ?').get(owner);
 }
 
-export async function anonymousOwner() {
+export async function anonymousOwner(onStage?: DiagnosticStage) {
+  onStage?.('owner-cookie-read');
   const value = (await cookies()).get(anonymousCookie)?.value;
-  return value && uuid.test(value) && canUseOwner(value) ? value : undefined;
+  if (!value || !uuid.test(value)) return undefined;
+  onStage?.('owner-anonymous-query');
+  return canUseOwner(value) ? value : undefined;
 }
 
-export async function getOwnerId() {
-  const session = await getAccountSession();
+export async function getOwnerId(onStage?: DiagnosticStage) {
+  const session = await getAccountSession(onStage);
   if (session?.user.emailVerified) return accountOwner(session.user.id);
-  return process.env.ACCOUNT_REQUIRED === '1' ? undefined : anonymousOwner();
+  return process.env.ACCOUNT_REQUIRED === '1' ? undefined : anonymousOwner(onStage);
 }
 
-export async function getOrCreateOwnerId() {
-  const current = await getOwnerId();
+export async function getOrCreateOwnerId(onStage?: DiagnosticStage) {
+  const current = await getOwnerId(onStage);
   if (current) return current;
   if (process.env.ACCOUNT_REQUIRED === '1') throw new AccountRequiredError();
+  onStage?.('owner-cookie-create');
   const jar = await cookies();
   const ownerId = randomUUID();
   jar.set(anonymousCookie, ownerId, {

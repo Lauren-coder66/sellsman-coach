@@ -13,16 +13,16 @@
 ## GitHub-hosted Linux Verify
 
 - [Verify Run 44489347718](https://github.com/Lauren-coder66/sellsman-coach/actions/runs/44489347718)，Job `135440709637`，执行 SHA **`a856a4a49d4a50c1a4e6293f1da285f613516d3f`**，结论 success。
-- GitHub Jobs API 的步骤状态显示：`npm ci`、运行时检查、运行时审计、ESLint、Vitest、Playwright、TypeScript、Next.js production build、production smoke、quota smoke、Docker build、Container smoke、Artifact 上传均 success。测试数量以本地本轮记录 57/57 和 14/14 为准；本报告未从 Linux 日志逐项提取数量。
+- GitHub Jobs API 的步骤状态显示：`npm ci`、运行时检查、运行时审计、ESLint、Vitest、Playwright、TypeScript、Next.js production build、production smoke、quota smoke、Docker build、Container smoke、Artifact 上传均 success。Linux Job 日志实际记录 Vitest 57/57、Playwright 14/14；容器日志记录健康检查、迁移、重启和重建持久化、在线备份及恢复均 PASS。
 - [容器证据 Artifact 14511704187](https://github.com/Lauren-coder66/sellsman-coach/actions/runs/44489347718/artifacts/14511704187) 名称为 `linux-container-smoke-a856a4a49d4a50c1a4e6293f1da285f613516d3f`。已确认上传成功；本报告写入时未逐行读取 ZIP 中的日志，故容器细项依据 Container smoke 步骤成功及脚本检查，不声称人工逐行复核了 Artifact。
 - `deploy/container-smoke.sh` 成功退出必须完成：Compose 启动及健康检查、本机 CA HTTPS 重定向、非 root 与只读文件系统、容器内迁移计数、会话创建、在线 SQLite 备份、应用重启与容器重建后的会话读取、恢复到新 SQLite 文件并核对原会话、运维指标采集。该脚本使用独立临时环境和 `AI_MODE=mock`，结束时删除自己的测试卷；不触碰正式数据库。CI success 证明该脚本在该 Runner 上退出 0，但不是公网证书或真实外部备份验收。
 
 ## 报告提交与最终 SHA
 
-本报告作为单独的文档提交会触发新的 Verify。最终报告提交 SHA、Run ID 和结果应在交付消息中单独核对，不把上述功能候选提交的 CI 结果冒充报告提交的结果，也不为写入新 Run ID 无限重复提交。
+本报告作为单独的文档提交 `788a2b381c1c4b2acf540deb516710862506e421` 已普通推送，并触发 [Verify Run 44490706477](https://github.com/Lauren-coder66/sellsman-coach/actions/runs/44490706477)，Job `135445283137`。Jobs API 确认执行 SHA 与该提交一致，结论 **failure**。Linux `npm ci`、运行时审计、ESLint、Vitest 57/57 通过；Playwright 14 项中 13 通过、1 失败：`e2e/history-pagination.spec.ts:20` 的创建会话响应预期 201、实际 500。服务端同轮记录 `[api-error] SqliteError`，没有打印 SQLite 错误码或具体 SQL，故尚不能确认根因。TypeScript、正式构建、Docker build、Container smoke 等后续步骤均 **skipped**；该 Run 没有 Artifact。不得将功能提交的成功结果视为最终提交的验收结果。
 
 ## 仍未解决
 
 真实百炼免费额度及账单、真实邮件投递、公网 HTTPS、异机备份、法律运营资料均未验收；本次没有购买资源或开放注册。结论只针对独立候选的代码与 Linux Mock 容器验收。
 
-**结论：功能候选提交已通过准确 SHA 的 Linux Verify，可以进入免费封闭测试的配置准备。** 正式对外测试仍需完成上述外部条件。
+**结论：NO-GO。** 功能候选 SHA 曾在 Linux 完整通过，但最终报告提交 SHA 的 Playwright 发生一次 SQLite 相关 500。当前证据只能将故障定位至并发 E2E 中创建会话的服务端数据库操作；具体 SQLite 错误码、失败的插入语句及是否为锁竞争尚未记录。应使用隔离数据库针对该用例与并发组合采集安全诊断日志，确认根因后修复并在最终准确 SHA 重跑完整 Verify。没有改动断言或跳过失败用例；不开放注册、不部署公网。

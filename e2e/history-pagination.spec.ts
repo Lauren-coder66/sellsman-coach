@@ -1,13 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 
-test('history loads all pages without duplicate sessions', async ({ page }) => {
+test('history loads all pages without duplicate sessions', async ({ page }, testInfo) => {
   const ids: string[] = [];
   const prefix = `[QA-TEST] 分页 ${randomUUID().slice(0, 8)}`;
   try {
     await page.goto('/history');
     for (let index = 0; index < 21; index++) {
+      const correlationId = randomUUID();
       const response = await page.request.post('/api/sessions', {
+        headers: { 'x-sales-coach-e2e-correlation-id': correlationId },
         data: {
           product: `${prefix} ${index}`,
           description: '用于验证历史记录分页。',
@@ -17,7 +19,8 @@ test('history loads all pages without duplicate sessions', async ({ page }) => {
           goal: '了解客户需求',
         },
       });
-      expect(response.status()).toBe(201);
+      const errorCode = response.status() === 201 ? undefined : (await response.json().catch(() => null))?.error?.code;
+      expect(response.status(), `create index=${index}, worker=${testInfo.workerIndex}, repeat=${testInfo.repeatEachIndex}, correlationId=${correlationId}, status=${response.status()}, errorCode=${typeof errorCode === 'string' ? errorCode : 'unknown'}`).toBe(201);
       ids.push((await response.json()).data.id);
     }
 
