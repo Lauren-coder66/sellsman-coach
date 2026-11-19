@@ -85,31 +85,31 @@ function TrainContent() {
   }
 
   const finishLabel = data?.session.status === 'failed' ? '重试生成报告' : data?.session.status === 'finishing' ? '检查报告状态' : data?.session.status === 'completed' ? '查看或恢复报告' : '结束训练';
-  return <main className="mx-auto flex h-dvh max-w-6xl flex-col p-4">
-    <header className="flex items-center justify-between gap-3 border-b bg-white p-4">
-      <div className="min-w-0 [overflow-wrap:anywhere]"><Link href="/" className="text-sm text-teal-700">◈ 销售陪练</Link><h1 className="text-xl font-bold">{data?.session.scenario.product || '训练工作台'}</h1>{data && <p className="text-sm text-slate-500">{data.session.scenario.identity} · {data.session.scenario.personality} · {data.session.scenario.difficulty}</p>}</div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+  return <main className="mx-auto flex h-dvh max-w-6xl flex-col p-2.5 sm:p-5">
+    <header className="flex items-center justify-between gap-3 rounded-t-xl border border-black/10 bg-white p-3 sm:p-5">
+      <div className="min-w-0 [overflow-wrap:anywhere]"><Link href="/" className="text-sm font-bold text-teal-700">销售陪练</Link><h1 className="mt-1 text-lg font-bold sm:text-2xl">{data?.session.scenario.product || '训练工作台'}</h1>{data && <p className="text-xs text-slate-600 sm:text-sm">{data.session.scenario.identity} · {data.session.scenario.personality} · {data.session.scenario.difficulty}</p>}</div>
+      <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">
         {data?.session.status === 'active' && <Link className="text-sm text-teal-700 underline" href={`/train/${id}/voice`}>语音练习</Link>}
-        <button onClick={finish} disabled={busy || !data || !['active', 'failed', 'finishing', 'completed'].includes(data.session.status)} className="rounded-lg border px-4 py-2 disabled:opacity-50">{finishLabel}</button>
+        <button onClick={finish} disabled={busy || !data || !['active', 'failed', 'finishing', 'completed'].includes(data.session.status)} className="min-h-11 rounded-lg border border-slate-400 bg-white px-3 py-2 text-sm font-semibold hover:bg-teal-50 disabled:opacity-50">{finishLabel}</button>
       </div>
     </header>
     {data && <p className="bg-amber-50 px-4 py-2 text-sm text-amber-900">{data.session.aiMode === 'real' ? '真实 AI 客户对练。' : '演示模式：当前客户回复由本地规则模拟，并非真实 AI。'} · {turns}/30 轮</p>}
     {data?.session.focus && <p className="bg-teal-50 px-4 py-3 text-sm text-teal-900"><b>本次训练重点：{focusDetails[data.session.focus.dimension].label}</b> · {focusDetails[data.session.focus.dimension].instruction}</p>}
-    <section ref={transcript} aria-label="训练对话" className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-100 p-4">
+    <section ref={transcript} aria-label="训练对话" className="studio-transcript min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:px-8">
       {loading && <p>正在恢复对话…</p>}
-      {data?.messages.map(message => <div key={message.id} className={`max-w-[85%] rounded-xl p-4 [overflow-wrap:anywhere] ${message.role === 'user' ? 'ml-auto bg-teal-700 text-white' : 'bg-white'}`}><div className="mb-2 text-xs opacity-70">{message.role === 'user' ? '销售人员' : '模拟客户'} · {new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</div><p className="whitespace-pre-wrap">{message.content}</p></div>)}
+      {data?.messages.map(message => <div key={message.id} data-role={message.role} className={`studio-message w-fit max-w-[88%] p-3.5 shadow-sm [overflow-wrap:anywhere] sm:max-w-[72%] ${message.role === 'user' ? 'ml-auto bg-teal-700 text-white' : 'bg-white'}`}><div className={`mb-1 text-xs font-semibold ${message.role === 'user' ? 'text-teal-100' : 'text-teal-800'}`}>{message.role === 'user' ? '销售人员' : '模拟客户'} · {new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</div><p className="whitespace-pre-wrap leading-relaxed">{message.content}</p></div>)}
       {busy && <p role="status" className="text-sm text-slate-500">正在处理请求…</p>}
     </section>
     {error && <div role="alert" className="bg-red-50 p-3 text-red-700">{error} <button onClick={load} className="underline">重新读取</button></div>}
     {pending && ['active', 'replying'].includes(data?.session.status ?? '') && <div className="bg-amber-50 p-3 text-amber-900">这条发言已保存，客户回复尚未完成。<button onClick={() => send(true)} disabled={busy} className="ml-2 underline disabled:opacity-50">重试客户回复</button></div>}
     {data?.session.status === 'completed' && <Link href={`/report/${id}`} className="p-3 text-teal-700">训练已结束，查看报告 →</Link>}
-    <div className="flex gap-3 bg-white p-3">
+    <div className="flex items-end gap-2 rounded-b-xl border border-black/10 bg-white p-2.5 sm:gap-3 sm:p-4">
       <textarea aria-label="输入回应" value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => {
         if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
         event.preventDefault();
         void send();
-      }} maxLength={1000} disabled={busy || !data || data.session.status !== 'active' || !!pending || turns >= 30} placeholder="输入回应 · Enter 发送，Shift+Enter 换行" className="min-h-20 min-w-0 flex-1 rounded-lg border p-3" />
-      <button onClick={() => send()} disabled={busy || !data || data.session.status !== 'active' || !!pending || !input.trim() || turns >= 30} className="shrink-0 rounded-lg bg-teal-700 px-5 text-white disabled:opacity-50">发送</button>
+      }} maxLength={1000} disabled={busy || !data || data.session.status !== 'active' || !!pending || turns >= 30} placeholder="输入回应 · Enter 发送，Shift+Enter 换行" className="h-18 min-w-0 flex-1 resize-none rounded-lg border border-slate-400 bg-slate-50 p-2.5 sm:h-22" />
+      <button onClick={() => send()} disabled={busy || !data || data.session.status !== 'active' || !!pending || !input.trim() || turns >= 30} className="min-h-11 shrink-0 rounded-lg bg-teal-700 px-4 font-semibold text-white hover:bg-teal-800 disabled:opacity-50">发送</button>
     </div>
   </main>;
 }
