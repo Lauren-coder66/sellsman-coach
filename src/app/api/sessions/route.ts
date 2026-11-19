@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
     });
     const now = Date.now();
     stage = 'transaction-begin';
+    // Reserve the writer before reads so a concurrent commit cannot invalidate their WAL snapshot.
     const created = db.transaction(tx => {
       stage = 'owner-access-check';
       if (!canUseOwner(ownerId)) return false;
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
       }
       stage = 'transaction-commit';
       return true;
-    });
+    }, { behavior: 'immediate' });
     stage = 'transaction-result-check';
     if (!created) return resolveExisting('after-transaction') ?? failure('NOT_FOUND','账号或来源训练不可用',404);
     return success({id, status:'active', scenario, focus}, 201);
