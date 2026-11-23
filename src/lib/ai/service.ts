@@ -25,10 +25,15 @@ export class AIModelOutputError extends Error {}
 class AIInvalidJSONError extends AIModelOutputError {}
 class AIInvalidStructureError extends AIModelOutputError {}
 
+const bailianEndpoint = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+const approvedModel = 'qwen3.7-flash';
+
 function configuredTrainingModels(): string[] {
   const { AI_CALLS_ENABLED, AI_PROVIDER, AI_API_URL, AI_API_KEY, AI_MODEL, AI_ALLOWED_MODELS, RELEASE_PROFILE } = process.env;
-  if (RELEASE_PROFILE === 'friend-preview' || AI_CALLS_ENABLED === '0' ||
-      !AI_PROVIDER || !AI_API_URL || !AI_API_KEY || !AI_MODEL) return [];
+  if (RELEASE_PROFILE === 'friend-preview') {
+    return AI_CALLS_ENABLED === '1' && AI_API_KEY?.trim() ? [approvedModel] : [];
+  }
+  if (AI_CALLS_ENABLED === '0' || !AI_PROVIDER || !AI_API_URL || !AI_API_KEY || !AI_MODEL) return [];
   if (RELEASE_PROFILE === 'production') {
     return AI_CALLS_ENABLED === '1' && AI_PROVIDER === 'bailian' && AI_MODEL === 'qwen3.7-flash' ? [AI_MODEL] : [];
   }
@@ -37,23 +42,25 @@ function configuredTrainingModels(): string[] {
 }
 
 export function availableTrainingModels(): string[] {
-  return process.env.AI_MODE === 'real' ? configuredTrainingModels() : [];
+  return process.env.AI_MODE === 'real' || process.env.RELEASE_PROFILE === 'friend-preview' ? configuredTrainingModels() : [];
 }
 
 function configuration(operation: string) {
-  if (process.env.RELEASE_PROFILE === 'production' && process.env.AI_CALLS_ENABLED !== '1') throw new AIProviderAccessError();
-  const url = process.env.AI_API_URL;
+  const preview = process.env.RELEASE_PROFILE === 'friend-preview';
+  if ((preview || process.env.RELEASE_PROFILE === 'production') && process.env.AI_CALLS_ENABLED !== '1') throw new AIProviderAccessError();
+  if (preview && !process.env.AI_API_KEY?.trim()) throw new AIProviderAccessError();
+  const url = preview ? bailianEndpoint : process.env.AI_API_URL;
   const selected = trainingModel.getStore();
   if (selected && !configuredTrainingModels().includes(selected)) throw new AIProviderAccessError();
-  const model = selected ?? process.env.AI_MODEL;
+  const model = selected ?? (preview ? approvedModel : process.env.AI_MODEL);
   const key = process.env.AI_API_KEY;
-  const provider = process.env.AI_PROVIDER;
+  const provider = preview ? 'bailian' : process.env.AI_PROVIDER;
   if (!provider || !url || !model || !key) throw new Error('真实 AI 未配置完整：需要 AI_PROVIDER、AI_API_URL、AI_MODEL 和 AI_API_KEY');
   const endpoint = new URL(url);
   if (endpoint.protocol !== 'https:' && !(endpoint.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname))) {
     throw new Error('AI_API_URL 必须使用 HTTPS（本机测试端点除外）');
   }
-  if (provider === 'bailian' && endpoint.href !== 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions') {
+  if (provider === 'bailian' && endpoint.href !== bailianEndpoint) {
     throw new Error('百炼模式需要使用华北2（北京）的 Chat Completions 接口');
   }
   if (process.env.RELEASE_PROFILE === 'production' && (provider !== 'bailian' || model !== 'qwen3.7-flash')) {
@@ -83,7 +90,7 @@ export async function callModel<T>(operation: string, system: string, input: unk
 
 async function requestModel<T>(config: ReturnType<typeof configuration>, operation: string, system: string, input: unknown, schema: z.ZodType<T>, maxOutputTokens: number, signal: AbortSignal, options: ModelOptions): Promise<T> {
   const owner = aiOwner.getStore();
-  if (!owner && process.env.ACCOUNT_REQUIRED === '1') throw new AIQuotaError('该操作需要账号与用量记录。');
+  if (!owner && (process.env.ACCOUNT_REQUIRED === '1' || process.env.RELEASE_PROFILE === 'friend-preview')) throw new AIQuotaError('该操作需要用量记录。');
   const payload = JSON.stringify(input);
   if (Buffer.byteLength(system + payload, 'utf8') > 60_000) throw new AIQuotaError('本次对话内容过长，请缩短场景内容或开始新训练。');
   const ledger = owner ? await import('@/lib/usage') : null;

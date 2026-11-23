@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     stage = 'generate-customer';
     const provider = getAIProvider(mode);
     const { profile, opening } = await runTrainingAI(ownerId, model, async () => {
-      if (provider.generateCustomerSetup && process.env.AI_CREATE_STRATEGY === 'combined') {
+      if (provider.generateCustomerSetup && process.env.AI_CREATE_STRATEGY === 'combined' && process.env.RELEASE_PROFILE !== 'friend-preview') {
         return provider.generateCustomerSetup(scenario, focus);
       }
       const profile = await provider.generateCustomerProfile(scenario, focus);

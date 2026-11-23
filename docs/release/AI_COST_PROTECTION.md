@@ -5,7 +5,7 @@
 ## 服务端控制
 
 - `scripts/validate-release.mjs` 要求生产环境固定 `AI_PROVIDER=bailian`、`AI_MODEL=qwen3.7-flash`、北京 Chat Completions 地址、`ACCOUNT_REQUIRED=1` 和 `AI_CALLS_ENABLED=1`。示例环境默认关闭调用；关闭时生产容器启动校验失败。
-- `src/lib/ai/service.ts` 在每次真实模型调用前再次检查生产开关、供应商和模型。客户端不能传入模型。上游 403 或 `AllocationQuota.FreeTierOnly` 返回可辨认的服务不可用错误，不自动切换供应商或 Mock。
+- `src/lib/ai/service.ts` 在每次真实模型调用前再次检查开关、供应商和模型。客户端只能选择服务端允许的模型。上游 403 或 `AllocationQuota.FreeTierOnly` 返回服务不可用错误，不自动切换供应商或 Mock。
 - 请求输入限制为 UTF-8 60,000 字节，单次输出配置限制为 3,800 Token，超时配置最高 45 秒。格式重试最多一次，使用同一超时信号。
 - `src/lib/usage.ts` 在调用前以 SQLite 即时事务预留额度：免费试用每日 60,000、每月 500,000 预算单位；系统每日 1,000,000；同一用户并发 1、全局 4；每用户每分钟最多 24 次，全局 90 次。统计按 UTC 日/月重置。`src/lib/training-service.ts` 限单场训练 30 轮，消息 requestId 幂等与会话租约防止重复回复。
 - 供应商没有返回 Token 或费用时，记录未知，不展示为零。管理员可通过账号用量的系统范围查看按模型调用、成功/失败、平均耗时及未知费用次数；运维汇总见 `scripts/ops-monitor.mjs`。
@@ -16,4 +16,8 @@
 2. 审查真实小流量调用后的供应商账单与应用 `ai_usage` 记录；如不一致，先停止调用并调查。零新增成本要求下，不得在未确认免费额度时设置 `AI_CALLS_ENABLED=1`。
 3. 运营方制定每日外部账单巡检和关闭开关流程。应用预留量使用字节数估算，不等同供应商真实 Token 计量；供应商最终计费仍以后台为准。
 
-本轮只验证了 Mock 与伪造的上游错误响应，未验证真实免费额度耗尽、真实账单或生产并发压力。
+## Render 好友内测
+
+保持 `RELEASE_PROFILE=friend-preview`、`AI_MODE=mock` 和现有内测口令。若百炼北京地域的 `qwen3.7-flash` 仍有免费额度且已开启「用完即停」，在 Render 的 Environment 一次保存 `AI_API_KEY` 和 `AI_CALLS_ENABLED=1`。应用固定使用该模型，以分步方式创建客户；Mock 仍是默认选项。关闭真实调用时把 `AI_CALLS_ENABLED` 改回 `0` 并重新部署。
+
+好友内测的应用侧全站日上限是 50,000 预算单位，匿名会话也计入。Render 免费实例休眠、重启或重新部署可能清空 SQLite 计数，费用保护仍依赖百炼账号的「用完即停」。实际账单以百炼控制台为准。

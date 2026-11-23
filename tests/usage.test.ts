@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from 'vitest';
+import { afterAll, expect, test, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -9,6 +9,15 @@ const { sqlite } = await import('../src/lib/db');
 const { reserveUsage, closeUsage, usageSummary } = await import('../src/lib/usage');
 afterAll(() => { sqlite.close(); rmSync(directory, { recursive: true, force: true }); });
 
+test('friend preview applies its shared daily ceiling across anonymous owners', () => {
+  vi.stubEnv('RELEASE_PROFILE', 'friend-preview');
+  try {
+    const id = reserveUsage('preview-a', 'bailian', 'qwen3.7-flash', 'report', 49_500);
+    expect(() => reserveUsage('preview-b', 'bailian', 'qwen3.7-flash', 'profile', 501)).toThrow('额度');
+    closeUsage(id, { model: null, totalTokens: 1, outcome: 'ok' });
+    expect(usageSummary().limits).toEqual({ day: 50_000 });
+  } finally { vi.unstubAllEnvs(); }
+});
 test('atomic reservation checks concurrency and retains reserves when usage is unknown', () => {
   const first = reserveUsage('owner-a', 'bailian', 'flash', 'report', 55000);
   expect(() => reserveUsage('owner-a', 'bailian', 'flash', 'reply', 100)).toThrow('正在处理');

@@ -3,7 +3,7 @@ import { sqlite } from '@/lib/db';
 import { AIQuotaError } from '@/lib/ai/usage-context';
 import { activePlan, plans } from '@/lib/plans';
 
-const systemDay = 1_000_000;
+const systemDayLimit = () => process.env.RELEASE_PROFILE === 'friend-preview' ? 50_000 : 1_000_000;
 const concurrency = { owner: 1, system: 4 };
 
 export function planFor(owner: string, now: number) {
@@ -36,7 +36,7 @@ export function reserveUsage(owner: string, provider: string, model: string, ope
     const sum = 'SELECT coalesce(sum(coalesce(tokens,reserved_tokens)),0) n FROM ai_usage';
     if (count(`${sum} WHERE owner_id=? AND started_at>=?`, owner, day) + tokens > tokenLimits.day ||
         count(`${sum} WHERE owner_id=? AND started_at>=?`, owner, month) + tokens > tokenLimits.month ||
-        count(`${sum} WHERE started_at>=?`, day) + tokens > systemDay) throw new AIQuotaError();
+        count(`${sum} WHERE started_at>=?`, day) + tokens > systemDayLimit()) throw new AIQuotaError();
     sqlite.prepare('INSERT INTO ai_usage (id,owner_id,provider,model,operation,started_at,reserved_tokens) VALUES (?,?,?,?,?,?,?)')
       .run(id, owner, provider, model, operation, now, tokens);
   }).immediate();
@@ -70,5 +70,5 @@ export function usageSummary(owner?: string) {
     round(avg(CASE WHEN completed_at IS NOT NULL THEN completed_at-started_at END)) averageDurationMs
     FROM ai_usage WHERE ${scope} started_at>=? GROUP BY provider,model ORDER BY provider,model`).all(...args, month);
   return { day: sqlite.prepare(sql).get(...args, day), month: sqlite.prepare(sql).get(...args, month),
-    limits: owner ? planFor(owner, now.getTime()) : { day: systemDay }, byModel: rollup };
+    limits: owner ? planFor(owner, now.getTime()) : { day: systemDayLimit() }, byModel: rollup };
 }

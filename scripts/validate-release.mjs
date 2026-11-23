@@ -10,6 +10,7 @@ export function releaseProblems(env) {
     if (!/^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(env.RENDER_EXTERNAL_URL ?? '')) errors.push('RENDER_EXTERNAL_URL');
     if (!/^[0-9a-f]{64}$/.test(env.PREVIEW_AUTH_SHA256 ?? '')) errors.push('PREVIEW_AUTH_SHA256');
     if (env.AI_MODE !== 'mock' || env.ACCOUNT_REQUIRED !== '0' || env.BETTER_AUTH_SECRET || env.E2E_TEST === '1') errors.push('PREVIEW_CONFIGURATION');
+    if (env.AI_CALLS_ENABLED === '1' && !env.AI_API_KEY?.trim()) errors.push('AI_API_KEY');
     return errors;
   }
   const domain = env.PUBLIC_DOMAIN ?? '';
