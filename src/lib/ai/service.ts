@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { aiOwner, AIQuotaError } from './usage-context';
+import { aiOwner, AIQuotaError, trainingModel } from './usage-context';
 
 const responseSchema = z.object({
   model: z.string().optional(),
@@ -25,10 +25,27 @@ export class AIModelOutputError extends Error {}
 class AIInvalidJSONError extends AIModelOutputError {}
 class AIInvalidStructureError extends AIModelOutputError {}
 
+function configuredTrainingModels(): string[] {
+  const { AI_CALLS_ENABLED, AI_PROVIDER, AI_API_URL, AI_API_KEY, AI_MODEL, AI_ALLOWED_MODELS, RELEASE_PROFILE } = process.env;
+  if (RELEASE_PROFILE === 'friend-preview' || AI_CALLS_ENABLED === '0' ||
+      !AI_PROVIDER || !AI_API_URL || !AI_API_KEY || !AI_MODEL) return [];
+  if (RELEASE_PROFILE === 'production') {
+    return AI_CALLS_ENABLED === '1' && AI_PROVIDER === 'bailian' && AI_MODEL === 'qwen3.7-flash' ? [AI_MODEL] : [];
+  }
+  return [...new Set([AI_MODEL, ...(AI_ALLOWED_MODELS?.split(',') ?? [])].map(model => model.trim()))]
+    .filter(model => /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,149}$/.test(model));
+}
+
+export function availableTrainingModels(): string[] {
+  return process.env.AI_MODE === 'real' ? configuredTrainingModels() : [];
+}
+
 function configuration(operation: string) {
   if (process.env.RELEASE_PROFILE === 'production' && process.env.AI_CALLS_ENABLED !== '1') throw new AIProviderAccessError();
   const url = process.env.AI_API_URL;
-  const model = process.env.AI_MODEL;
+  const selected = trainingModel.getStore();
+  if (selected && !configuredTrainingModels().includes(selected)) throw new AIProviderAccessError();
+  const model = selected ?? process.env.AI_MODEL;
   const key = process.env.AI_API_KEY;
   const provider = process.env.AI_PROVIDER;
   if (!provider || !url || !model || !key) throw new Error('真实 AI 未配置完整：需要 AI_PROVIDER、AI_API_URL、AI_MODEL 和 AI_API_KEY');

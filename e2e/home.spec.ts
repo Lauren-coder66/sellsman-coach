@@ -6,8 +6,11 @@ test('mock training workflow', async ({ page }) => {
   let sessionId: string | undefined;
   try {
     await page.goto('/');
-    await expect(page.getByRole('link', { name: /开始训练/ })).toBeVisible();
-    await page.getByRole('link', { name: /开始训练/ }).click();
+    await page.getByRole('button', { name: /开始训练/ }).click();
+    const picker = page.getByRole('dialog', { name: '选择训练模式' });
+    await expect(picker.getByRole('radio', { name: /Mock 模拟/ })).toBeChecked();
+    await expect(picker.getByRole('radio', { name: /真实 AI/ })).toBeDisabled();
+    await picker.getByRole('button', { name: '继续选择场景' }).click();
     await page.getByRole('button', { name: '价格异议' }).click();
     await expect(page.getByLabel('产品或服务名称')).toHaveValue('业务咨询服务');
     await page.getByLabel('产品或服务名称').fill(product);

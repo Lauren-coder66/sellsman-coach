@@ -10,7 +10,9 @@ import { focusDetails } from '@/lib/focus';
 import { eq, desc, and, or, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import { reportSource } from '@/lib/report';
-import { aiOwner } from '@/lib/ai/usage-context';
+import { runTrainingAI } from '@/lib/ai/usage-context';
+import { availableTrainingModels } from '@/lib/ai/service';
+import type { CustomerProfile } from '@/lib/ai/provider';
 import { e2eCorrelationId, logE2EDiagnostic } from '@/lib/e2e-diagnostics';
 
 const cursorSchema = z.object({ createdAt: z.number().int().nonnegative(), id: z.string().uuid() });
@@ -21,7 +23,7 @@ export async function POST(request: NextRequest) {
   try {
     const parsed = await parseJson(request, sessionCreateSchema);
     if (parsed.error) return parsed.error;
-    const { requestId, sourceSessionId, focusDimension, ...scenario } = parsed.data!;
+    const { requestId, sourceSessionId, focusDimension, mode, model, ...scenario } = parsed.data!;
     const ownerId = await getOrCreateOwnerId(nextStage => { stage = nextStage; });
     stage = 'owner-resolved';
     const id = requestId ?? randomUUID();
@@ -31,6 +33,8 @@ export async function POST(request: NextRequest) {
       const row = db.select().from(trainingSessions).where(eq(trainingSessions.id, id)).get();
       if (!row) return null;
       if (row.ownerId !== ownerId || row.scenarioJson !== scenarioJson) return failure('DUPLICATE', '创建请求 ID 已被使用', 409);
+      const profile = JSON.parse(row.customerProfileJson) as CustomerProfile;
+      if (mode && ((profile.mode ?? 'mock') !== mode || profile.model !== model)) return failure('DUPLICATE', '创建请求的训练模式或模型已变更', 409);
       stage = scope === 'initial' ? 'idempotent-focus-query' : 'transaction-result-focus-query';
       const savedFocus = db.select().from(trainingFocus).where(eq(trainingFocus.sessionId, id)).get();
       if (savedFocus?.sourceSessionId !== sourceSessionId || savedFocus?.dimension !== focusDimension) return failure('DUPLICATE', '创建请求内容已变更', 409);
@@ -38,12 +42,13 @@ export async function POST(request: NextRequest) {
     };
     const existing = resolveExisting('initial');
     if (existing) return existing;
+    if (model && !availableTrainingModels().includes(model)) return failure('AI_UNAVAILABLE', '所选模型当前不可用，请选择其他模型或 Mock 模式', 503);
     stage = 'source-session-query';
     if (sourceSessionId && !db.select({id:trainingSessions.id}).from(trainingSessions).where(and(eq(trainingSessions.id,sourceSessionId),eq(trainingSessions.ownerId,ownerId))).get()) return failure('NOT_FOUND','来源训练不存在',404);
     const focus = focusDimension ? {dimension:focusDimension,instruction:focusDetails[focusDimension].instruction} : undefined;
     stage = 'generate-customer';
-    const provider = getAIProvider();
-    const { profile, opening } = await aiOwner.run(ownerId, async () => {
+    const provider = getAIProvider(mode);
+    const { profile, opening } = await runTrainingAI(ownerId, model, async () => {
       if (provider.generateCustomerSetup && process.env.AI_CREATE_STRATEGY === 'combined') {
         return provider.generateCustomerSetup(scenario, focus);
       }
@@ -61,7 +66,7 @@ export async function POST(request: NextRequest) {
       stage = 'transaction-source-query';
       if (sourceSessionId && !tx.select({id:trainingSessions.id}).from(trainingSessions).where(and(eq(trainingSessions.id,sourceSessionId),eq(trainingSessions.ownerId,ownerId))).get()) return false;
       stage = 'training-sessions-insert';
-      tx.insert(trainingSessions).values({id, ownerId, scenarioJson, customerProfileJson: JSON.stringify(profile), status:'active', createdAt:now, updatedAt:now}).run();
+      tx.insert(trainingSessions).values({id, ownerId, scenarioJson, customerProfileJson: JSON.stringify({ ...profile, model }), status:'active', createdAt:now, updatedAt:now}).run();
       stage = 'messages-insert';
       tx.insert(messages).values({id:randomUUID(),sessionId:id,role:'customer',content:opening,sequence:0,createdAt:now}).run();
       if (sourceSessionId && focusDimension) {

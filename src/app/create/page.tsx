@@ -22,7 +22,10 @@ function Form() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [aiMode, setAiMode] = useState<'mock' | 'real' | null>(null);
+  const [aiMode, setAiMode] = useState<'mock' | 'real'>(() => params.get('mode') === 'real' ? 'real' : 'mock');
+  const [model, setModel] = useState(() => params.get('model') ?? '');
+  const [models, setModels] = useState<string[] | null>(null);
+  const canStart = aiMode === 'mock' || Boolean(models?.includes(model));
   const creation = useRef<{ requestId: string; body: string } | null>(null);
   const savedId = params.get('scenario');
   const sessionId = params.get('from');
@@ -36,7 +39,7 @@ function Form() {
 
   useEffect(() => {
     api<{ items: SavedItem[] }>('/api/scenarios').then(data => setPersonal(data.items)).catch(cause => setError((cause as Error).message));
-    api<{ mode: 'mock' | 'real' }>('/api/ai-mode').then(data => setAiMode(data.mode)).catch(cause => setError((cause as Error).message));
+    api<{ models: string[] }>('/api/ai-mode').then(data => setModels(data.models)).catch(() => setModels([]));
   }, []);
   useEffect(() => {
     let current = true;
@@ -50,12 +53,13 @@ function Form() {
 
   async function start(event: React.FormEvent) {
     event.preventDefault();
-    if (busy || saving || sourceLoading) return;
+    if (busy || saving || sourceLoading || !canStart) return;
     if (focusError) { setError(focusError); return; }
     setBusy(true);
     setError('');
     try {
-      const payload = focus && sourceSessionId ? { ...scenario, sourceSessionId, focusDimension: focus } : scenario;
+      const setup = { ...scenario, mode: aiMode, ...(aiMode === 'real' ? { model } : {}) };
+      const payload = focus && sourceSessionId ? { ...setup, sourceSessionId, focusDimension: focus } : setup;
       const body = JSON.stringify(payload);
       const requestId = creation.current?.body === body ? creation.current.requestId : crypto.randomUUID();
       creation.current = { requestId, body };
@@ -101,11 +105,23 @@ function Form() {
       </aside>
     <form onSubmit={start} className="studio-sheet grid min-w-0 gap-5 p-5 md:grid-cols-2 md:p-7">
       <h2 className="border-b border-black/10 pb-4 text-xl font-bold md:col-span-2">排练设置</h2>
+      <label className="grid gap-2">训练模式<select value={aiMode} onChange={event => {
+        const next = event.target.value === 'real' ? 'real' : 'mock';
+        setAiMode(next);
+        if (next === 'real' && !models?.includes(model)) setModel(models?.[0] ?? '');
+      }} className="min-h-11 rounded-lg border px-3">
+        <option value="mock">Mock 模拟</option>
+        <option value="real" disabled={!models?.length}>真实 AI{models?.length ? '' : '（当前不可用）'}</option>
+      </select></label>
+      {aiMode === 'real' && <label className="grid gap-2">AI 模型<select value={model} onChange={event => setModel(event.target.value)} className="min-h-11 rounded-lg border px-3">
+        <option value="">选择模型</option>
+        {models?.map(id => <option key={id} value={id}>{id}</option>)}
+      </select></label>}
       <fieldset disabled={sourceLoading} className="contents"><label className="grid gap-2 md:col-span-2">场景名称（保存个人场景时必填）<input maxLength={80} value={name} onChange={event => setName(event.target.value)} className="rounded-lg border p-3" /></label>
       <ScenarioFields scenario={scenario} onChange={setScenario} /></fieldset>
       {(error || focusError) && <p role="alert" className="text-red-700 md:col-span-2">{error || focusError}</p>}
       {notice && <p role="status" className="text-teal-700 md:col-span-2">{notice}</p>}
-      <div className="flex flex-wrap gap-3 md:col-span-2"><button type="button" onClick={save} disabled={busy || saving || sourceLoading} className="rounded-xl border border-teal-700 px-5 py-4 font-bold text-teal-700 disabled:opacity-50">{saving ? '正在保存…' : '保存为个人场景'}</button><button disabled={busy || saving || sourceLoading} className="flex-1 rounded-xl bg-teal-700 p-4 font-bold text-white disabled:opacity-50">{busy ? (aiMode === 'real' ? '正在生成客户场景…' : '正在创建…') : aiMode === 'real' ? '开始文字训练 →' : '开始模拟训练 →'}</button></div>
+      <div className="flex flex-wrap gap-3 md:col-span-2"><button type="button" onClick={save} disabled={busy || saving || sourceLoading} className="rounded-xl border border-teal-700 px-5 py-4 font-bold text-teal-700 disabled:opacity-50">{saving ? '正在保存…' : '保存为个人场景'}</button><button disabled={busy || saving || sourceLoading || !canStart} className="flex-1 rounded-xl bg-teal-700 p-4 font-bold text-white disabled:opacity-50">{busy ? (aiMode === 'real' ? '正在生成客户场景…' : '正在创建…') : aiMode === 'real' ? '开始文字训练 →' : '开始模拟训练 →'}</button></div>
     </form>
     </div>
   </main>;

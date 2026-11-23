@@ -8,7 +8,7 @@ import { reportSchema } from '@/lib/validation';
 import type { AIProvider, CustomerProfile } from '@/lib/ai/provider';
 import { AIRateLimitError, AIModelOutputError, AIProviderAccessError, AIRequestTimeoutError } from '@/lib/ai/service';
 import { reportEvidenceMatches, type ScoredReport } from '@/lib/report';
-import { aiOwner, AIQuotaError } from '@/lib/ai/usage-context';
+import { runTrainingAI, AIQuotaError } from '@/lib/ai/usage-context';
 
 type Problem = { ok: false; code: string; message: string; status: number };
 type Result<T> = { ok: true; data: T } | Problem;
@@ -55,7 +55,7 @@ export async function sendMessage(id: string, ownerId: string, content: string, 
   if (claimed.data) return { ok: true, data: claimed.data };
   try {
     const profile = JSON.parse(claimed.session.customerProfileJson) as CustomerProfile;
-    const reply = await aiOwner.run(ownerId, () => (provider ?? getAIProvider(profile.mode ?? 'mock')).generateCustomerReply(JSON.parse(claimed.session.scenarioJson), profile, claimed.history, focusFor(id)));
+    const reply = await runTrainingAI(ownerId, profile.model, () => (provider ?? getAIProvider(profile.mode ?? 'mock')).generateCustomerReply(JSON.parse(claimed.session.scenarioJson), profile, claimed.history, focusFor(id)));
     if (!reply.trim()) throw new Error('客户回复为空');
     return db.transaction(tx => {
       const changed = tx.update(trainingSessions).set({ status: 'active', updatedAt: Date.now() }).where(and(owned(id, ownerId), eq(trainingSessions.status, 'replying'), eq(trainingSessions.updatedAt, claimed.stamp))).run();
@@ -98,7 +98,7 @@ export async function finishSession(id: string, ownerId: string, provider?: AIPr
     } else {
       const profile = JSON.parse(claimed.session.customerProfileJson) as CustomerProfile;
       const scoringSource = profile.mode ?? 'mock';
-      const generated = await aiOwner.run(ownerId, () => (provider ?? getAIProvider(scoringSource)).generateTrainingReport(JSON.parse(claimed.session.scenarioJson), claimed.history, focusFor(id)));
+      const generated = await runTrainingAI(ownerId, profile.model, () => (provider ?? getAIProvider(scoringSource)).generateTrainingReport(JSON.parse(claimed.session.scenarioJson), claimed.history, focusFor(id)));
       const validated = reportSchema.parse(generated);
       if (!reportEvidenceMatches(validated.issues, claimed.history)) throw new Error('报告引用与原始消息不符');
       report = { ...validated, scoringSource, scoringModel: scoringSource === 'real' ? generated.scoringModel : undefined };

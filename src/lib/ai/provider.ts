@@ -15,6 +15,7 @@ export type CustomerProfile = {
   purchaseIntent?: string;
   decisionCriteria?: string;
   mode?: 'mock' | 'real';
+  model?: string;
 };
 export type TrainingFocusContext = { dimension: FocusDimension; instruction: string };
 export interface AIProvider {

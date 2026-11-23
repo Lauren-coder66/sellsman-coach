@@ -26,7 +26,7 @@ test('simulated real endpoint preserves ten turns, retries failure, and never ad
   const ownerId = randomUUID();
   const id = randomUUID();
   const scenario = { product: '[QA-TEST] 企业网站开发', description: '企业网站设计和维护', identity: '企业负责人', personality: '怀疑型', difficulty: '困难', goal: '处理客户异议' } as const;
-  const profile = { identity: '企业负责人', needs: '增加线上询盘', budget: '每年两万元', concerns: '不确定投入效果', purchaseIntent: '谨慎比较', decisionCriteria: '需要案例和预算说明', mode: 'real' };
+  const profile = { identity: '企业负责人', needs: '增加线上询盘', budget: '每年两万元', concerns: '不确定投入效果', purchaseIntent: '谨慎比较', decisionCriteria: '需要案例和预算说明', mode: 'real', model: 'simulated-model' };
   const now = Date.now();
   db.insert(trainingSessions).values({ id, ownerId, scenarioJson: JSON.stringify(scenario), customerProfileJson: JSON.stringify(profile), status: 'active', createdAt: now, updatedAt: now }).run();
   db.insert(messages).values({ id: randomUUID(), sessionId: id, role: 'customer', content: '你们有可核实的案例吗？', sequence: 0, createdAt: now }).run();
@@ -34,7 +34,8 @@ test('simulated real endpoint preserves ten turns, retries failure, and never ad
   process.env.AI_MODE = 'mock'; // A saved real session must keep using real mode after the default changes.
   process.env.AI_PROVIDER = 'local-test';
   process.env.AI_API_URL = 'http://localhost:3999/v1/chat/completions';
-  process.env.AI_MODEL = 'simulated-model';
+  process.env.AI_MODEL = 'new-default-model';
+  process.env.AI_ALLOWED_MODELS = 'simulated-model';
   process.env.AI_API_KEY = 'unit-only';
   process.env.AI_TIMEOUT_MS = '1000';
   vi.spyOn(console, 'info').mockImplementation(() => {});
@@ -42,6 +43,7 @@ test('simulated real endpoint preserves ten turns, retries failure, and never ad
   let reportAttempts = 0;
   const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
     const request = JSON.parse(init.body as string);
+    expect(request.model).toBe('simulated-model');
     const input = JSON.parse(request.messages[1].content);
     if (input.messages) {
       expect(input.profile).toBeUndefined();

@@ -1,6 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 
+test('the start dialog lists available models and passes the selected model to creation', async ({ page }) => {
+  await page.route('**/api/ai-mode', route => route.fulfill({ json: { success: true, data: { mode: 'real', models: ['fixture-fast', 'fixture-quality'] } } }));
+  await page.goto('/');
+  await page.getByRole('button', { name: /开始训练/ }).click();
+  const dialog = page.getByRole('dialog', { name: '选择训练模式' });
+  await dialog.getByRole('radio', { name: /真实 AI/ }).check();
+  await dialog.getByLabel('AI 模型').selectOption('fixture-quality');
+  await dialog.getByRole('button', { name: '继续选择场景' }).click();
+  await expect(page.getByLabel('AI 模型')).toHaveValue('fixture-quality');
+  await page.getByRole('button', { name: '价格异议' }).click();
+  const created = page.waitForResponse(response => response.url().endsWith('/api/sessions') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: /开始文字训练/ }).click();
+  const response = await created;
+  expect(response.request().postDataJSON()).toMatchObject({ mode: 'real', model: 'fixture-quality' });
+  expect(response.status()).toBe(503); // The Mock server must reject a model a browser claims is available.
+  await expect(page.getByRole('alert').filter({ hasText: '所选模型当前不可用' })).toBeVisible();
+});
+
 test('mock mode remains explicit and session APIs omit the hidden profile', async ({ page }) => {
   let id: string | undefined;
   try {

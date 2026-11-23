@@ -4,6 +4,7 @@ import { getOwnedSession } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { messages, trainingFocus, trainingSessions } from '@/lib/db/schema';
 import { success, failure, handleError } from '@/lib/api';
+import type { CustomerProfile } from '@/lib/ai/provider';
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -14,13 +15,15 @@ export async function GET(_request: NextRequest, { params }: Context) {
     if (!session) return failure('NOT_FOUND', '会话不存在', 404);
     const rows = db.select().from(messages).where(eq(messages.sessionId, id)).orderBy(messages.sequence).all();
     const focus = db.select().from(trainingFocus).where(eq(trainingFocus.sessionId, id)).get();
+    const profile = JSON.parse(session.customerProfileJson) as CustomerProfile;
     const sourceAvailable = focus ? Boolean(db.select({ id: trainingSessions.id }).from(trainingSessions).where(and(eq(trainingSessions.id, focus.sourceSessionId), eq(trainingSessions.ownerId, session.ownerId))).get()) : false;
     return success({
       session: {
         id,
         scenario: JSON.parse(session.scenarioJson),
         status: session.status,
-        aiMode: (JSON.parse(session.customerProfileJson) as { mode?: string }).mode === 'real' ? 'real' : 'mock',
+        aiMode: profile.mode === 'real' ? 'real' : 'mock',
+        aiModel: profile.mode === 'real' ? profile.model : undefined,
         focus: focus ? { dimension: focus.dimension, sourceSessionId: focus.sourceSessionId, sourceAvailable } : null,
       },
       messages: rows,
