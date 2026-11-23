@@ -83,6 +83,14 @@ body {
 .studio-stats dd { font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; line-height: 1; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
 .studio-page-title { font-size: clamp(2.1rem, 5vw, 3.4rem); font-weight: 850; line-height: 1.13; letter-spacing: -.055em; }
 .studio-sheet { border: 1px solid var(--studio-line); border-radius: 14px; background: white; }
+.studio-dialog { margin: auto; width: min(92vw, 32rem); max-height: 88dvh; padding: 1.5rem; box-shadow: 0 24px 80px #131b3b40; }
+.studio-dialog::backdrop { background: #131b3b99; }
+.studio-choice { display: flex; align-items: center; gap: .55rem; max-width: 100%; min-height: 44px; border: 1px solid var(--studio-line); border-radius: 8px; background: white; padding: .55rem .75rem; cursor: pointer; font-size: .875rem; }
+.studio-choice input { flex: none; accent-color: var(--studio-blue); }
+.studio-choice span { overflow-wrap: anywhere; }
+.studio-choice small { display: block; margin-top: .2rem; color: var(--studio-muted); }
+.studio-choice:has(:checked) { border-color: var(--studio-blue); background: #eef1ff; color: var(--studio-blue); }
+.studio-choice:has(:disabled) { opacity: .65; cursor: not-allowed; }
 .studio-template { min-height: 48px; border: 1px solid var(--studio-line); border-radius: 8px; background: white; text-align: left; padding: .75rem; }
 .studio-template:hover:not(:disabled), .studio-template[aria-pressed="true"] { border-color: var(--studio-blue); color: var(--studio-blue); background: #eef1ff; }
 .studio-template:disabled { opacity: .5; }

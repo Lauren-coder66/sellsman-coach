@@ -50,8 +50,8 @@ test('report leads to focused practice without changing the source training', as
     const product = page.getByRole('textbox', { name: '产品或服务名称' }).last();
     await expect(product).toHaveValue(scenario.product);
     await product.fill('[QA-TEST] 训练时调整的产品');
-    await page.getByLabel('客户性格').selectOption('价格敏感型');
-    await page.getByLabel('训练难度').selectOption('困难');
+    await page.getByRole('group', { name: '客户性格' }).getByRole('radio', { name: '价格敏感型' }).check();
+    await page.getByRole('group', { name: '训练难度' }).getByRole('radio', { name: '困难' }).check();
     await page.getByRole('button', { name: /开始模拟训练/ }).click();
     await page.waitForURL('**/train/**');
     childId = new URL(page.url()).pathname.split('/').at(-1);
@@ -70,8 +70,8 @@ test('report leads to focused practice without changing the source training', as
     }
     await page.reload();
     await expect(page.getByText('第3轮：请说说您的问题和预算')).toBeVisible();
-    page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '结束训练' }).click();
+    await page.getByRole('dialog', { name: /确定结束本次训练/ }).getByRole('button', { name: '确认' }).click();
     await page.waitForURL(`**/report/${childId}`);
     await expect(page.getByRole('heading', { name: '训练复盘' })).toBeVisible();
     await expect(page.locator('main:visible').getByText('本次训练重点：异议处理')).toBeVisible();

@@ -32,7 +32,6 @@ test('failed report exposes retry and retains the request error', async ({ page 
     await page.goto(`/train/${id}`);
     const retry = page.getByRole('button', { name: '重试生成报告' });
     await expect(retry).toBeEnabled();
-    page.on('dialog', dialog => dialog.accept());
     await retry.click();
     await expect(page.getByText('测试报告生成失败')).toBeVisible();
     await expect(retry).toBeEnabled();

@@ -30,8 +30,13 @@ test('mock training workflow', async ({ page }) => {
       await expect(page.getByText(`${index + 2}/30 轮`)).toBeVisible();
       await expect(page.getByRole('button', { name: '结束训练' })).toBeEnabled();
     }
-    page.once('dialog', dialog => dialog.accept());
     await page.getByRole('button', { name: '结束训练' }).click();
+    const finish = page.getByRole('dialog', { name: /确定结束本次训练/ });
+    await finish.getByRole('button', { name: '取消' }).click();
+    await expect(finish).not.toBeVisible();
+    await expect(page.getByRole('button', { name: '结束训练' })).toBeEnabled();
+    await page.getByRole('button', { name: '结束训练' }).click();
+    await finish.getByRole('button', { name: '确认' }).click();
     await page.waitForURL('**/report/**');
     await expect(page.getByText(/演示报告：评分由本地规则生成/)).toBeVisible();
     await page.getByRole('link', { name: '再次练习' }).click();
@@ -39,8 +44,8 @@ test('mock training workflow', async ({ page }) => {
     await page.goto('/history');
     const record = page.locator('article').filter({ hasText: product });
     await expect(record).toBeVisible();
-    page.once('dialog', dialog => dialog.accept());
     await record.getByRole('button', { name: '删除' }).click();
+    await page.getByRole('dialog', { name: /确定删除这条训练/ }).getByRole('button', { name: '确认' }).click();
     await expect(record).toHaveCount(0);
   } finally {
     if (sessionId) await page.request.delete(`/api/sessions/${sessionId}`);

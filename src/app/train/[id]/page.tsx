@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/client';
+import { useStudioConfirm } from '@/components/studio-confirm';
 import type { Scenario } from '@/lib/ai/provider';
 import { focusDetails, type FocusDimension } from '@/lib/focus';
 
@@ -11,6 +12,7 @@ type Msg = { id: string; role: 'user' | 'customer'; content: string; sequence: n
 type Data = { session: { id: string; scenario: Scenario; status: string; aiMode: 'mock' | 'real'; aiModel?: string; focus: { dimension: FocusDimension; sourceSessionId: string; sourceAvailable: boolean } | null }; messages: Msg[] };
 
 function TrainContent() {
+  const { ask, confirmation } = useStudioConfirm();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [data, setData] = useState<Data | null>(null);
@@ -72,7 +74,7 @@ function TrainContent() {
 
   async function finish() {
     if (busy || !data || !['active', 'failed', 'finishing', 'completed'].includes(data.session.status)) return;
-    if (data.session.status === 'active' && !confirm('确定结束本次训练并生成报告吗？')) return;
+    if (data.session.status === 'active' && !await ask('确定结束本次训练并生成报告吗？')) return;
     setBusy(true);
     setError('');
     try {
@@ -86,6 +88,7 @@ function TrainContent() {
 
   const finishLabel = data?.session.status === 'failed' ? '重试生成报告' : data?.session.status === 'finishing' ? '检查报告状态' : data?.session.status === 'completed' ? '查看或恢复报告' : '结束训练';
   return <main className="mx-auto flex h-dvh max-w-6xl flex-col p-2.5 sm:p-5">
+    {confirmation}
     <header className="flex items-center justify-between gap-3 rounded-t-xl border border-black/10 bg-white p-3 sm:p-5">
       <div className="min-w-0 [overflow-wrap:anywhere]"><Link href="/" className="text-sm font-bold text-teal-700">销售陪练</Link><h1 className="mt-1 text-lg font-bold sm:text-2xl">{data?.session.scenario.product || '训练工作台'}</h1>{data && <p className="text-xs text-slate-600 sm:text-sm">{data.session.scenario.identity} · {data.session.scenario.personality} · {data.session.scenario.difficulty}</p>}</div>
       <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">

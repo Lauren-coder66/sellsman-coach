@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/client';
+import { StudioChoice } from '@/components/studio-choice';
 
 type Category = 'problem' | 'suggestion' | 'other';
 type Feedback = { id: string; category: Category; content: string; createdAt: number };
@@ -52,7 +53,7 @@ export default function FeedbackPage() {
     <h1 className="text-3xl font-bold">反馈与建议</h1>
     <p className="text-slate-600">描述遇到的问题或希望改善的地方。请勿填写真实客户资料、密码或密钥。反馈会保存在你的账号下，每天最多提交 3 条。</p>
     <form onSubmit={submit} className="space-y-4 rounded-xl border bg-white p-5">
-      <label className="block">反馈类型<select value={category} onChange={event => setCategory(event.target.value as Category)} className="mt-2 block w-full rounded-lg border p-3">{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <StudioChoice label="反馈类型" value={category} onChange={setCategory} options={(Object.keys(labels) as Category[]).map(value => ({ value, label: labels[value] }))} />
       <label className="block">具体内容<textarea required minLength={10} maxLength={1500} value={content} onChange={event => setContent(event.target.value)} className="mt-2 min-h-36 w-full rounded-lg border p-3" placeholder="例如：在哪个页面、做了什么、实际出现了什么" /></label>
       {error && <p role="alert" className="text-red-700">{error} <Link href="/account" className="underline">检查登录状态</Link></p>}
       {notice && <p role="status" className="text-teal-700">{notice}</p>}

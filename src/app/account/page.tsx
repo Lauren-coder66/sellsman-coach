@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { createAuthClient } from 'better-auth/react';
 import { useState } from 'react';
 import { api } from '@/lib/client';
+import { useStudioConfirm } from '@/components/studio-confirm';
 
 const auth = createAuthClient();
 const fieldClass = 'mt-1 w-full rounded-lg border px-3 py-2';
@@ -11,6 +12,7 @@ const buttonClass = 'rounded-lg border px-4 py-2 disabled:opacity-50';
 class AccountActionError extends Error {}
 
 export default function AccountPage() {
+  const { ask, confirmation } = useStudioConfirm();
   const { data: session, isPending } = auth.useSession();
   const [mode, setMode] = useState<'login' | 'register' | 'reset' | 'verify'>('login');
   const [notice, setNotice] = useState('');
@@ -24,6 +26,7 @@ export default function AccountPage() {
   }
 
   return <main className="mx-auto max-w-xl space-y-5 px-4 py-8">
+    {confirmation}
     <nav><Link href="/" className="text-teal-700">返回销售陪练</Link></nav>
     <h1 className="text-3xl font-bold">账号设置</h1>
     {isPending ? <p>正在检查登录状态…</p> : session?.user ? <>
@@ -66,8 +69,8 @@ export default function AccountPage() {
           return '已退出登录';
         })}>退出登录</button>
       </div>
-      <button className={`${buttonClass} text-red-800`} disabled={busy} onClick={() => {
-        if (!window.confirm('申请删除账号及账号下的训练和场景？')) return;
+      <button className={`${buttonClass} text-red-800`} disabled={busy} onClick={async () => {
+        if (!await ask('申请删除账号及账号下的训练和场景？')) return;
         void run(async () => {
           const result = await auth.deleteUser({ callbackURL: '/' });
           if (result.error) throw new AccountActionError('删除申请失败');

@@ -57,8 +57,8 @@ test('personal scenarios persist, stay private, and never rewrite training snaps
     await page.getByLabel('产品或服务名称').fill('再次编辑的产品');
     await page.getByRole('button', { name: '保存修改' }).click();
     expect((await page.request.get(`/api/sessions/${sessionId}`).then(response => response.json())).data.session.scenario).toEqual(snapshot);
-    page.once('dialog', dialog => dialog.accept());
     await record.getByRole('button', { name: '删除' }).click();
+    await page.getByRole('dialog', { name: /确定删除这个个人场景/ }).getByRole('button', { name: '确认' }).click();
     await expect(record).toHaveCount(0);
     expect((await page.request.get(`/api/scenarios/${scenarioId}`)).status()).toBe(404);
     expect((await page.request.get(`/api/sessions/${sessionId}`).then(response => response.json())).data.session.scenario).toEqual(snapshot);

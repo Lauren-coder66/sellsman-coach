@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { ScenarioFields } from '@/components/scenario-fields';
+import { StudioChoice } from '@/components/studio-choice';
 import { templates } from '@/lib/templates';
 import { api } from '@/lib/client';
 import { focusDetails, type FocusDimension } from '@/lib/focus';
@@ -105,18 +106,11 @@ function Form() {
       </aside>
     <form onSubmit={start} className="studio-sheet grid min-w-0 gap-5 p-5 md:grid-cols-2 md:p-7">
       <h2 className="border-b border-black/10 pb-4 text-xl font-bold md:col-span-2">排练设置</h2>
-      <label className="grid gap-2">训练模式<select value={aiMode} onChange={event => {
-        const next = event.target.value === 'real' ? 'real' : 'mock';
+      <StudioChoice label="训练模式" value={aiMode} onChange={next => {
         setAiMode(next);
         if (next === 'real' && !models?.includes(model)) setModel(models?.[0] ?? '');
-      }} className="min-h-11 rounded-lg border px-3">
-        <option value="mock">Mock 模拟</option>
-        <option value="real" disabled={!models?.length}>真实 AI{models?.length ? '' : '（当前不可用）'}</option>
-      </select></label>
-      {aiMode === 'real' && <label className="grid gap-2">AI 模型<select value={model} onChange={event => setModel(event.target.value)} className="min-h-11 rounded-lg border px-3">
-        <option value="">选择模型</option>
-        {models?.map(id => <option key={id} value={id}>{id}</option>)}
-      </select></label>}
+      }} options={[{ value: 'mock', label: 'Mock 模拟' }, { value: 'real', label: '真实 AI', disabled: !models?.length }]} />
+      {aiMode === 'real' && <StudioChoice label="AI 模型" value={model} onChange={setModel} options={models ?? []} />}
       <fieldset disabled={sourceLoading} className="contents"><label className="grid gap-2 md:col-span-2">场景名称（保存个人场景时必填）<input maxLength={80} value={name} onChange={event => setName(event.target.value)} className="rounded-lg border p-3" /></label>
       <ScenarioFields scenario={scenario} onChange={setScenario} /></fieldset>
       {(error || focusError) && <p role="alert" className="text-red-700 md:col-span-2">{error || focusError}</p>}

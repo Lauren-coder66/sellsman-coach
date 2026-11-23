@@ -7,9 +7,9 @@ test('the start dialog lists available models and passes the selected model to c
   await page.getByRole('button', { name: /开始训练/ }).click();
   const dialog = page.getByRole('dialog', { name: '选择训练模式' });
   await dialog.getByRole('radio', { name: /真实 AI/ }).check();
-  await dialog.getByLabel('AI 模型').selectOption('fixture-quality');
+  await dialog.getByRole('radio', { name: 'fixture-quality' }).check();
   await dialog.getByRole('button', { name: '继续选择场景' }).click();
-  await expect(page.getByLabel('AI 模型')).toHaveValue('fixture-quality');
+  await expect(page.getByRole('group', { name: 'AI 模型' }).getByRole('radio', { name: 'fixture-quality' })).toBeChecked();
   await page.getByRole('button', { name: '价格异议' }).click();
   const created = page.waitForResponse(response => response.url().endsWith('/api/sessions') && response.request().method() === 'POST');
   await page.getByRole('button', { name: /开始文字训练/ }).click();

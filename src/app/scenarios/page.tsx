@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ScenarioFields } from '@/components/scenario-fields';
+import { useStudioConfirm } from '@/components/studio-confirm';
 import { api } from '@/lib/client';
 import { templates } from '@/lib/templates';
 import type { Scenario } from '@/lib/ai/provider';
@@ -11,6 +12,7 @@ type Item = { id: string; name: string; scenario: Scenario; createdAt: number; u
 const blank: Scenario = { product: '', description: '', identity: '中小企业负责人', personality: '普通型', difficulty: '中等', goal: '了解客户需求' };
 
 export default function Scenarios() {
+  const { ask, confirmation } = useStudioConfirm();
   const [items, setItems] = useState<Item[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -51,7 +53,7 @@ export default function Scenarios() {
   }
 
   async function remove(id: string) {
-    if (!confirm('确定删除这个个人场景吗？历史训练不会被删除。')) return;
+    if (!await ask('确定删除这个个人场景吗？历史训练不会被删除。')) return;
     setError('');
     try {
       await api(`/api/scenarios/${id}`, { method: 'DELETE' });
@@ -62,6 +64,7 @@ export default function Scenarios() {
   }
 
   return <main className="mx-auto max-w-6xl p-6 md:p-10">
+    {confirmation}
     <header className="flex justify-between"><Link href="/" className="font-bold text-teal-800">◈ 销售陪练</Link><nav className="flex gap-4"><Link href="/create">创建训练</Link><Link href="/history">训练历史</Link></nav></header>
     <h1 className="mt-12 text-4xl font-bold">我的场景</h1>
     <p className="mt-3 text-slate-600">保存常用产品与客户设定。训练时可以再调整，历史训练保留当时的场景快照。</p>

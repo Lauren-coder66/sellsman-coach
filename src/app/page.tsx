@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/client';
+import { StudioChoice } from '@/components/studio-choice';
 
 type Item = { id: string; scenario: { product: string; personality: string }; status: string; createdAt: number };
 type Stats = { aiMode: 'mock' | 'real'; total: number; completed: number; last7: number; turns: number; recent: Item[] };
@@ -44,22 +45,16 @@ export default function Home() {
         <Image src="/rehearsal-room.webp" fill preload sizes="(min-width: 1024px) 54vw, (min-width: 768px) 50vw, 100vw" alt="" className="object-cover" />
       </div>
     </section>
-    <dialog ref={dialog} aria-labelledby="training-mode-title" className="studio-sheet m-auto w-[min(92vw,29rem)] max-h-[88dvh] p-6 shadow-2xl backdrop:bg-slate-950/55">
+    <dialog ref={dialog} aria-labelledby="training-mode-title" className="studio-sheet studio-dialog">
       <div className="flex items-center justify-between gap-4">
         <h2 id="training-mode-title" className="text-2xl font-bold tracking-tight">选择训练模式</h2>
         <button type="button" aria-label="关闭" onClick={() => dialog.current?.close()} className="grid size-11 place-items-center rounded-lg text-xl hover:bg-slate-100">×</button>
       </div>
-      <fieldset aria-label="训练模式" className="mt-4 grid gap-3">
-        <label className="studio-template flex cursor-pointer gap-3 has-checked:border-teal-600 has-checked:bg-teal-50">
-          <input type="radio" name="training-mode" checked={mode === 'mock'} onChange={() => setMode('mock')} className="accent-teal-700" />
-          <span><strong className="block">Mock 模拟</strong><span className="text-sm text-slate-600">用本地规则体验客户对话和复盘。</span></span>
-        </label>
-        <label className="studio-template flex gap-3 has-checked:border-teal-600 has-checked:bg-teal-50">
-          <input type="radio" name="training-mode" checked={mode === 'real'} disabled={!models?.length} onChange={() => setMode('real')} className="accent-teal-700" />
-          <span><strong className="block">真实 AI</strong><span className="text-sm text-slate-600">{models === null ? '正在读取可用模型…' : models.length ? '由所选模型生成客户回复和复盘。' : '当前环境尚未配置可用模型。'}</span></span>
-        </label>
-      </fieldset>
-      {mode === 'real' && <label className="mt-4 grid gap-2 text-sm font-bold">AI 模型<select value={model} onChange={event => setModel(event.target.value)} className="min-h-11 rounded-lg border border-slate-400 bg-white px-3 font-normal">{models?.map(id => <option key={id} value={id}>{id}</option>)}</select></label>}
+      <StudioChoice label="训练模式" value={mode} onChange={setMode} className="mt-4 [&_label]:w-full" options={[
+        { value: 'mock', label: 'Mock 模拟', description: '用本地规则体验客户对话和复盘。' },
+        { value: 'real', label: '真实 AI', disabled: !models?.length, description: models === null ? '正在读取可用模型…' : models.length ? '由所选模型生成客户回复和复盘。' : '当前环境尚未配置可用模型。' },
+      ]} />
+      {mode === 'real' && <StudioChoice label="AI 模型" value={model} onChange={setModel} options={models ?? []} className="mt-4" />}
       <button type="button" disabled={mode === 'real' && !model} className="mt-5 min-h-11 w-full rounded-lg bg-teal-700 px-4 font-bold text-white hover:bg-teal-800 disabled:opacity-50" onClick={() => {
         const query = new URLSearchParams({ mode });
         if (mode === 'real') query.set('model', model);
