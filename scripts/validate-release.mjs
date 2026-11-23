@@ -3,9 +3,15 @@ import { pathToFileURL } from 'node:url';
 export function releaseProblems(env) {
   const errors = [];
   const profile = env.RELEASE_PROFILE;
-  if (profile !== 'production' && profile !== 'staging') return ['RELEASE_PROFILE'];
+  if (!['production', 'staging', 'friend-preview'].includes(profile)) return ['RELEASE_PROFILE'];
   if (!/^\/var\/lib\/sales-coach\/[a-zA-Z0-9][a-zA-Z0-9_.-]*\.sqlite$/.test(env.DATABASE_URL ?? '')) errors.push('DATABASE_URL');
   if (profile === 'staging') return errors;
+  if (profile === 'friend-preview') {
+    if (!/^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(env.RENDER_EXTERNAL_URL ?? '')) errors.push('RENDER_EXTERNAL_URL');
+    if (!/^[0-9a-f]{64}$/.test(env.PREVIEW_AUTH_SHA256 ?? '')) errors.push('PREVIEW_AUTH_SHA256');
+    if (env.AI_MODE !== 'mock' || env.ACCOUNT_REQUIRED !== '0' || env.BETTER_AUTH_SECRET || env.E2E_TEST === '1') errors.push('PREVIEW_CONFIGURATION');
+    return errors;
+  }
   const domain = env.PUBLIC_DOMAIN ?? '';
   if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(domain) || /\.(test|invalid|localhost)$/i.test(domain)) errors.push('PUBLIC_DOMAIN');
   if (env.BETTER_AUTH_URL !== `https://${domain}`) errors.push('BETTER_AUTH_URL');
